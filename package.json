@@ -1,8 +1,8 @@
 {
-  "name": "bot-backend-ultra",
-  "version": "2.0.0",
+  "name": "bot-backend-ultra-max",
+  "version": "2.1.0",
   "private": true,
-  "description": "Production-grade Express + Prisma backend for WhatsApp & Telegram bots (ultra edition).",
+  "description": "Production-grade Express + Prisma backend for WhatsApp & Telegram bots (ultra max).",
   "main": "server.js",
   "engines": {
     "node": "20.x"
@@ -12,8 +12,7 @@
     "postinstall": "prisma generate",
     "deploy:migrate": "prisma migrate deploy",
     "db:push": "prisma db push",
-    "seed": "node src/db/migrate/seed.js",
-    "dev": "node server.js"
+    "seed": "node src/db/migrate/seed.js"
   },
   "dependencies": {
     "express": "^4.19.2",
@@ -21,6 +20,5 @@
     "helmet": "^7.1.0",
     "prisma": "^5.22.0",
     "@prisma/client": "^5.22.0"
-  },
-  "license": "MIT"
+  }
 }

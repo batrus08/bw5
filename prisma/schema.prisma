@@ -112,11 +112,4 @@ model tasks {
 model settings { key String @id; value String?; updated_at DateTime @default(now()) @updatedAt }
 model otptokens { id String @id; order_id BigInt; expires_at DateTime; used Boolean @default(false); created_at DateTime @default(now()); @@index([order_id, expires_at]) }
 model deadletters { id BigInt @id @default(autoincrement()); channel Channel; endpoint String?; payload Json; error String?; retry_count Int @default(0); created_at DateTime @default(now()); last_attempt DateTime @default(now()) }
-
-// Persistent rate limit (optional)
-model ratelogs {
-  id    BigInt   @id @default(autoincrement())
-  key   String
-  ts    DateTime @default(now())
-  @@index([key, ts])
-}
+model ratelogs { id BigInt @id @default(autoincrement()); key String; ts DateTime @default(now()); @@index([key, ts]) }

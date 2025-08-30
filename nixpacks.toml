@@ -1,0 +1,9 @@
+
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+[phases.install]
+cmds = ["npm ci || npm i"]
+[phases.build]
+cmds = ["npm run postinstall"]
+[start]
+cmd = "node server.js"
