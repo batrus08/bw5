@@ -1,4 +1,4 @@
-// Prisma schema — fixed and completed (Node 20 / Prisma 5.x)
+// Prisma schema — Node 20 / Prisma 5.x
 
 generator client {
   provider = "prisma-client-js"

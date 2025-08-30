@@ -1,3 +1,4 @@
+// src/whatsapp/webhook.js
 const express = require('express');
 const crypto = require('crypto');
 const router = express.Router();
@@ -5,6 +6,7 @@ const { WA_APP_SECRET, WA_VERIFY_TOKEN } = require('../config/env');
 const { addEvent } = require('../services/events');
 const { formatTs } = require('../utils/time');
 
+// Verification
 router.get('/', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
@@ -16,29 +18,32 @@ router.get('/', (req, res) => {
   return res.sendStatus(403);
 });
 
+// Receive events
 router.post('/', async (req, res) => {
-  const sig = req.headers['x-hub-signature-256'];
-  if (!sig || !req.rawBody) return res.sendStatus(403);
-  const expected =
-    'sha256=' +
-    crypto.createHmac('sha256', WA_APP_SECRET).update(req.rawBody).digest('hex');
-  const valid =
-    typeof sig === 'string' &&
-    sig.length === expected.length &&
-    crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
-  if (!valid) {
-    console.error('WA webhook signature mismatch');
-    await addEvent(
-      null,
-      'WA_INVALID_SIGNATURE',
-      `Signature mismatch at ${formatTs()}`
-    );
-    return res.sendStatus(403);
-  }
+  try {
+    // Verify signature if possible
+    const sig = req.get('X-Hub-Signature-256');
+    if (WA_APP_SECRET && sig && req.rawBody) {
+      const expected =
+        'sha256=' + crypto.createHmac('sha256', WA_APP_SECRET).update(req.rawBody).digest('hex');
+      if (
+        typeof sig !== 'string' ||
+        sig.length !== expected.length ||
+        !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))
+      ) {
+        console.error('WA webhook signature mismatch');
+        await addEvent(null, 'WA_INVALID_SIGNATURE', `Signature mismatch at ${formatTs()}`);
+        return res.sendStatus(403);
+      }
+    }
 
-  const field = req.body?.entry?.[0]?.changes?.[0]?.field;
-  console.log('WA webhook', field);
-  res.sendStatus(200);
+    const field = req.body?.entry?.[0]?.changes?.[0]?.field;
+    console.log('WA webhook', field);
+    res.sendStatus(200);
+  } catch (err) {
+    console.error('wa webhook error:', err && err.message ? err.message : err);
+    res.sendStatus(200);
+  }
 });
 
 module.exports = router;

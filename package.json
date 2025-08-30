@@ -1,45 +1,27 @@
-# Bot Backend
-
-Node.js Express backend with Prisma and PostgreSQL for WhatsApp and Telegram bots.
-
-## Environment Variables
-
-| Name | Example | Description |
-| ---- | ------- | ----------- |
-| PORT | 3000 | HTTP port |
-| DATABASE_URL | postgresql://user:pass@host:5432/db | Postgres connection string |
-| TELEGRAM_BOT_TOKEN | 123456:ABCDEF | Telegram bot token |
-| ADMIN_CHAT_ID | -1001234567890 | Telegram admin chat ID |
-| WEBHOOK_SECRET_PATH | secret123 | Secret path component for webhooks |
-| PUBLIC_URL | https://app.up.railway.app | Public HTTPS URL |
-| ENCRYPTION_KEY | c3VwZXJzZWNyZXRrZXlzZWNyZXRrZXlzZWNyZXRrZXk= | 32-byte base64 key for encryption |
-| JWT_SECRET | supersecretjwt | JWT signing secret |
-| WA_APP_SECRET | waappsecret | WhatsApp app secret for HMAC |
-| WA_VERIFY_TOKEN | verifytoken | WhatsApp webhook verification token |
-| REMINDER_COOLDOWN_MS | 600000 | (optional) Cooldown between reminders in ms |
-| TIMEZONE | Asia/Jakarta | (optional) Timezone for timestamps |
-| DATETIME_FORMAT | YYYY-MM-DD HH:mm:ss | (optional) Timestamp format |
-
-## Local Setup
-
-```bash
-npm i
-npx prisma migrate dev
-node src/db/migrate/seed.js
-npm start
-```
-
-## Telegram Webhook
-
-```bash
-curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook"   -d "url=$PUBLIC_URL/webhook/telegram/$WEBHOOK_SECRET_PATH"
-```
-
-## Health Check
-
-- `GET /healthz`
-- `GET /status`
-
-## Security
-
-Jangan log kredensial atau data sensitif. Gunakan Railway Variables untuk menyimpan konfigurasi.
+{
+  "name": "bot-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Express + Prisma backend for WhatsApp & Telegram bots (Node 20 / Railway-ready)",
+  "main": "server.js",
+  "engines": {
+    "node": "20.x"
+  },
+  "scripts": {
+    "start": "prisma generate && prisma db push && node server.js",
+    "start:safe": "node server.js",
+    "postinstall": "prisma generate",
+    "dev": "node server.js",
+    "prisma:generate": "prisma generate",
+    "prisma:db-push": "prisma db push",
+    "prisma:migrate": "prisma migrate deploy",
+    "prisma:dev": "prisma migrate dev --name init",
+    "seed": "node src/db/migrate/seed.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "prisma": "^5.22.0",
+    "@prisma/client": "^5.22.0"
+  },
+  "license": "MIT"
+}

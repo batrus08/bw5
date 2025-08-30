@@ -1,96 +1,50 @@
-// server.js — CommonJS, siap untuk Railway / Node v20.x
-const express = require('express');
+# Bot Backend
 
-const health = require('./src/routes/health');
-const status = require('./src/routes/status');
-const telegramWebhook = require('./src/telegram/webhook');
-const waWebhook = require('./src/whatsapp/webhook');
+Node.js Express backend with Prisma and PostgreSQL for WhatsApp and Telegram bots.
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+## Environment Variables
 
-// Railway/Proxies
-app.set('trust proxy', true);
+| Name | Example | Description |
+| ---- | ------- | ----------- |
+| `PORT` | `3000` | HTTP port |
+| `DATABASE_URL` | `postgresql://user:pass@host:5432/db` | Postgres connection string |
+| `TELEGRAM_BOT_TOKEN` | `123456:ABCDEF` | Telegram bot token |
+| `ADMIN_CHAT_ID` | `-1001234567890` | Telegram admin chat ID |
+| `WEBHOOK_SECRET_PATH` | `secret123` | Secret path component for webhooks |
+| `PUBLIC_URL` | `https://app.up.railway.app` | Public HTTPS URL |
+| `ENCRYPTION_KEY` | `c3Vw...` | 32-byte base64 key for encryption |
+| `JWT_SECRET` | `supersecretjwt` | JWT signing secret |
+| `WA_APP_SECRET` | `waappsecret` | WhatsApp app secret for HMAC |
+| `WA_VERIFY_TOKEN` | `verifytoken` | WhatsApp webhook verification token |
+| `REMINDER_COOLDOWN_MS` | `600000` | Cooldown between reminders in ms |
+| `TIMEZONE` | `Asia/Jakarta` | Timezone |
+| `DATETIME_FORMAT` | `YYYY-MM-DD HH:mm:ss` | Timestamp format |
 
-// ===== WA WEBHOOK (butuh raw body untuk verifikasi HMAC) =====
-app.use(
-  '/webhook/wa',
-  express.json({
-    limit: '256kb',
-    verify: (req, res, buf) => {
-      // simpan buffer mentah untuk perhitungan signature di handler
-      req.rawBody = buf;
-    },
-  }),
-  waWebhook
-);
+## Local Setup
 
-// ===== Parser umum untuk route lain (Telegram, REST, dll) =====
-app.use(
-  express.json({
-    limit: '256kb',
-    strict: true,
-    type: ['application/json', 'application/*+json'],
-  })
-);
+```bash
+npm i
+npx prisma migrate dev
+node src/db/migrate/seed.js
+npm start
+```
 
-// Minimal CORS (opsional)
-app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
-  if (req.method === 'OPTIONS') return res.sendStatus(204);
-  next();
-});
+## Telegram Webhook
 
-// ===== Routes aplikasi =====
-app.use('/healthz', health);
-app.use('/status', status);
+```bash
+curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook"   -d "url=$PUBLIC_URL/webhook/telegram/$WEBHOOK_SECRET_PATH"
+```
 
-// ---- Telegram webhook ----
-// Jika WEBHOOK_SECRET_PATH di-set, mount router pada path yang spesifik.
-// Kalau tidak, mount ke /webhook/telegram (tanpa secret).
-const tgPath = process.env.WEBHOOK_SECRET_PATH
-  ? `/webhook/telegram/${process.env.WEBHOOK_SECRET_PATH}`
-  : '/webhook/telegram';
+## Health Check
 
-app.use(tgPath, telegramWebhook);
+- `GET /healthz`
+- `GET /status`
 
-// Root info singkat
-app.get('/', (_req, res) => {
-  res.json({
-    ok: true,
-    msg: 'Service running',
-    healthz: '/healthz',
-    status: '/status',
-    telegram_webhook: tgPath,
-    wa_webhook: '/webhook/wa',
-  });
-});
+## Notes
 
-// ===== 404 handler (hanya untuk request yang tidak ter-handle) =====
-app.use((req, res) => {
-  res.status(404).json({ ok: false, error: 'NOT_FOUND' });
-});
+- Node 20 has global `fetch`—no need for `node-fetch`.
+- If your platform omits devDependencies, Prisma CLI is still available (we keep it in `dependencies`).
 
-// ===== Error handler global (mis. JSON parse error) =====
-app.use((err, req, res, _next) => {
-  if (err && err.type === 'entity.parse.failed') {
-    return res.status(400).json({ ok: false, error: 'INVALID_JSON' });
-  }
-  console.error('Unhandled error:', err?.message || err);
-  res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' });
-});
+## Security
 
-// ===== Start server =====
-const server = app.listen(PORT, () => {
-  console.log(`Node ${process.version} listening on :${PORT}`);
-  if (process.env.PUBLIC_URL) console.log(`Public URL: ${process.env.PUBLIC_URL}`);
-  console.log(`Telegram webhook mounted at: ${tgPath}`);
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, closing server...');
-  server.close(() => process.exit(0));
-});
+Do not log secrets or credentials. Use environment variables (e.g., Railway Variables).

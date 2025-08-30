@@ -1,96 +1,53 @@
+// src/telegram/webhook.js
 const express = require('express');
 const router = express.Router();
-const { ADMIN_CHAT_ID, WEBHOOK_SECRET_PATH } = require('../config/env');
+const { ADMIN_CHAT_ID } = require('../config/env');
 const { confirmPaid, rejectOrder } = require('../services/orders');
 const { addEvent } = require('../services/events');
-const prisma = require('../db/client');
-const { sendMessage, editMessageText, answerCallbackQuery } = require('../services/telegram');
+const { sendMessage, answerCallbackQuery } = require('../services/telegram');
 const { formatTs } = require('../utils/time');
 
-router.post('/'), async (req, res) => {
-  // secret validated via mount path in server.js
-  const update = req.body; console.log('TG webhook update:', JSON.stringify(update));
-  const msg = update.message || update.edited_message || update.callback_query?.message;
-  const chatId = msg?.chat?.id;
-  if (!chatId || String(chatId) !== String(ADMIN_CHAT_ID)) return res.sendStatus(200);
+router.get('/', (_req, res) => res.sendStatus(200));
 
-  if (update.message || update.edited_message) {
-    const text = msg.text || '';
-    if (text === '/start' || text === '/admin') {
-      await sendMessage(chatId, 'Menu admin', {
-        reply_markup: { inline_keyboard: [[{ text: 'Ping', callback_data: `PING|${Date.now()}` }]] },
-      });
-    } else if (text === '/status') {
-      const uptime = Math.floor(process.uptime());
-      await sendMessage(
-        chatId,
-        `Bot admin siap ✅\nWebhook: /webhook/telegram/${WEBHOOK_SECRET_PATH}\nUptime: ${uptime}s`
-      );
-    } else if (text === '/help') {
-      await sendMessage(chatId, '/start - menu\n/status - status bot\n/help - bantuan');
+router.post('/', async (req, res) => {
+  try {
+    const update = req.body;
+    console.log('TG webhook update:', JSON.stringify(update));
+
+    const msg = update.message || update.edited_message || update.callback_query?.message;
+    const chatId = msg?.chat?.id;
+
+    // Only allow ADMIN_CHAT_ID (if configured)
+    if (!chatId || String(chatId) !== String(ADMIN_CHAT_ID)) {
+      return res.sendStatus(200);
     }
-  }
 
-  if (update.callback_query) {
-    const data = update.callback_query.data || '';
-    if (data.startsWith('PING')) {
-      await answerCallbackQuery(update.callback_query.id, 'PONG ✅');
-    } else if (data.startsWith('CONFIRM|')) {
-      const id = Number(data.split('|')[1]);
-      await answerCallbackQuery(update.callback_query.id, '✅ Dikonfirmasi');
-      if (id) {
-        const order = await confirmPaid(id);
-        const product = await prisma.products.findUnique({
-          where: { code: order.product_code },
-          select: { name: true },
-        });
-        const amount = (order.amount_cents / 100).toLocaleString('id-ID');
-        const timestamp = formatTs();
-        const text =
-          `✅ Order ${order.invoice} sudah dikonfirmasi oleh admin.\n` +
-          `Produk: ${product?.name} x${order.qty} • Total: Rp${amount}\n` +
-          `Waktu: ${timestamp}`;
-        try {
-          await editMessageText(chatId, msg.message_id, text);
-        } catch (error) {
-          await addEvent(
-            order.id,
-            'TELEGRAM_EDIT_FAIL',
-            `Gagal edit pesan order ${order.invoice}: ${error.message}`
-          );
-        }
+    if (update.message?.text) {
+      const text = update.message.text.trim();
+
+      if (text.startsWith('/start')) {
+        await sendMessage(chatId, `Bot is online. ${formatTs()}`);
+      } else if (text.startsWith('/confirm ')) {
+        const invoice = text.split(' ')[1];
+        const r = await confirmPaid(invoice);
+        await sendMessage(chatId, r.ok ? `✅ Order ${invoice} confirmed.` : `❌ ${r.error}`);
+      } else if (text.startsWith('/reject ')) {
+        const invoice = text.split(' ')[1];
+        const r = await rejectOrder(invoice, 'Rejected via bot');
+        await sendMessage(chatId, r.ok ? `🚫 Order ${invoice} rejected.` : `❌ ${r.error}`);
+      } else {
+        await sendMessage(chatId, `Echo: ${text}`);
       }
-    } else if (data.startsWith('REJECT|')) {
-      const id = Number(data.split('|')[1]);
-      await answerCallbackQuery(update.callback_query.id, '❌ Ditolak');
-      if (id) {
-        const order = await rejectOrder(id, 'Admin reject via Telegram');
-        const product = await prisma.products.findUnique({
-          where: { code: order.product_code },
-          select: { name: true },
-        });
-        const amount = (order.amount_cents / 100).toLocaleString('id-ID');
-        const timestamp = formatTs();
-        const text =
-          `❌ Order ${order.invoice} ditolak oleh admin.\n` +
-          `Produk: ${product?.name} x${order.qty} • Total: Rp${amount}\n` +
-          `Waktu: ${timestamp}`;
-        try {
-          await editMessageText(chatId, msg.message_id, text);
-        } catch (error) {
-          await addEvent(
-            order.id,
-            'TELEGRAM_EDIT_FAIL',
-            `Gagal edit pesan order ${order.invoice}: ${error.message}`
-          );
-        }
-      }
-    } else {
+    } else if (update.callback_query) {
       await answerCallbackQuery(update.callback_query.id, '');
     }
-  }
 
-  res.sendStatus(200);
+    res.sendStatus(200);
+  } catch (err) {
+    console.error('telegram webhook error:', err && err.message ? err.message : err);
+    try { await addEvent(null, 'TELEGRAM_EDIT_FAIL', `Error: ${err.message}`); } catch {}
+    res.sendStatus(200);
+  }
 });
 
 module.exports = router;
