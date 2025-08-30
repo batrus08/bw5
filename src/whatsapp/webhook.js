@@ -1,8 +1,10 @@
+
 const express = require('express');
 const crypto = require('crypto');
 const prisma = require('../db/client');
-const { WA_APP_SECRET, WA_VERIFY_TOKEN, RATE_LIMIT_WA_PER_MIN, PAYMENT_QRIS_TEXT, PAYMENT_QRIS_IMAGE_URL, PAYMENT_QRIS_MEDIA_ID } = require('../config/env');
+const { WA_APP_SECRET, WA_VERIFY_TOKEN, RATE_LIMIT_WA_PER_MIN, RATE_LIMIT_PERSISTENT, PAYMENT_QRIS_TEXT, PAYMENT_QRIS_IMAGE_URL, PAYMENT_QRIS_MEDIA_ID } = require('../config/env');
 const { allow } = require('../utils/rateLimit');
+const { allowPersistent } = require('../utils/rateLimitDB');
 const { addEvent } = require('../services/events');
 const { sendText, sendInteractiveButtons, sendListMenu, sendImageById, sendImageByUrl } = require('../services/wa');
 const { sendMessage, buildOrderKeyboard } = require('../services/telegram');
@@ -31,12 +33,14 @@ router.post('/', async (req, res) => {
     const messages = entry?.messages || [];
     for (const m of messages) {
       const from = m.from;
-      if (!allow(`wa:${from}`, RATE_LIMIT_WA_PER_MIN)) { await addEvent(null,'RATE_LIMITED',`wa user ${from}`,{},'SYSTEM','wa'); continue; }
+      const ok = RATE_LIMIT_PERSISTENT ? await allowPersistent(`wa:${from}`, RATE_LIMIT_WA_PER_MIN) : allow(`wa:${from}`, RATE_LIMIT_WA_PER_MIN);
+      if (!ok) { await addEvent(null,'RATE_LIMITED',`wa user ${from}`,{},'SYSTEM','wa'); continue; }
 
       if (m.type === 'text') {
         const t = (m.text?.body || '').trim().toLowerCase();
         if (t === 'menu' || t === 'halo' || t === 'hi' || t === 'order') {
-          await sendInteractiveButtons(from, 'Pilih menu:', ['Order', 'Stok', 'FAQ', 'Harga', 'Chat Penjual']);
+          // WA only allows 3 buttons; use list for more
+          await sendInteractiveButtons(from, 'Pilih menu:', ['Order', 'Harga', 'FAQ']);
         } else if (t.startsWith('order ')) {
           const parts = t.split(/\s+/);
           const code = parts[1], qty = Number(parts[2]||1), email = parts[3]||null;
@@ -47,8 +51,12 @@ router.post('/', async (req, res) => {
           if (PAYMENT_QRIS_MEDIA_ID) await sendImageById(from, PAYMENT_QRIS_MEDIA_ID, caption);
           else if (PAYMENT_QRIS_IMAGE_URL) await sendImageByUrl(from, PAYMENT_QRIS_IMAGE_URL, caption);
           else await sendText(from, caption);
+        } else if (t.startsWith('stok ')) {
+          const code = t.split(/\s+/)[1];
+          const count = await prisma.accounts.count({ where:{ product_code: code, status:'AVAILABLE' } });
+          await sendText(from, `Stok ${code}: ${count}`);
         } else {
-          await sendText(from, 'Ketik: menu | order <kode> <qty> [email]');
+          await sendText(from, 'Ketik: menu | order <kode> <qty> [email] | stok <kode>');
         }
       } else if (m.type === 'image') {
         const order = await prisma.orders.findFirst({ where:{ buyer_phone: from, status:'PENDING_PAYMENT' }, orderBy:{ created_at:'desc' } });
@@ -63,10 +71,8 @@ router.post('/', async (req, res) => {
         if (id.startsWith('b')) {
           const title = m.interactive?.button_reply?.title?.toLowerCase() || '';
           if (title === 'order') await sendText(from, 'Format: order <kode> <qty> [email]');
-          else if (title === 'stok') await sendText(from, 'Ketik kode produk untuk cek stok.');
-          else if (title === 'faq') await sendText(from, 'Tanya saja, kami bantu.');
           else if (title === 'harga') await sendText(from, 'Harga: ambil dari DB.');
-          else await sendText(from, 'Hubungi penjual di Telegram.');
+          else if (title === 'faq') await sendText(from, 'Tanya saja, kami bantu.');
         }
       }
     }

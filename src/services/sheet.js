@@ -1,5 +1,7 @@
+
 const prisma = require('../db/client');
 const { SHEET_MODE, SHEET_CSV_URL, SHEET_SECRET } = require('../config/env');
+const { encrypt } = require('../utils/crypto');
 const { notifyCritical } = require('./telegram');
 
 function parseCSV(text){
@@ -17,8 +19,17 @@ async function syncAccountsFromCSV(){
     const res = await fetch(url); if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const rows = parseCSV(await res.text()); let upserts=0;
     for(const r of rows){
-      const data = { product_code: r.product_code, username: r.username, password_enc: r.password, otp_secret_enc: r.otp_secret||null, max_uses: Number(r.max_uses||1), current_uses: Number(r.current_uses||0), status: (r.status==='DISABLED'?'DISABLED':(r.status==='RESERVED'?'RESERVED':'AVAILABLE')) };
-      await prisma.accounts.upsert({ where:{ product_code_username:{ product_code:data.product_code, username:data.username } }, update:data, create:data }); upserts++;
+      const data = {
+        product_code: r.product_code,
+        username: r.username,
+        password_enc: r.password ? encrypt(r.password) : '',
+        otp_secret_enc: r.otp_secret ? encrypt(r.otp_secret) : null,
+        max_uses: Number(r.max_uses||1),
+        current_uses: Number(r.current_uses||0),
+        status: (r.status==='DISABLED'?'DISABLED':(r.status==='RESERVED'?'RESERVED':'AVAILABLE')),
+      };
+      await prisma.accounts.upsert({ where:{ product_code_username:{ product_code:data.product_code, username:data.username } }, update:data, create:data });
+      upserts++;
     }
     await prisma.events.create({ data:{ kind:'SHEET_SYNC_OK', actor:'SYSTEM', source:'sheet', meta:{ upserts } } });
     return { ok:true, upserts };

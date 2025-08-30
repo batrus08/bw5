@@ -1,5 +1,7 @@
+
 const prisma = require('../db/client');
 const { addEvent } = require('./events');
+const { encrypt } = require('../utils/crypto');
 
 function toCents(n){ return Math.round(Number(n||0)); }
 

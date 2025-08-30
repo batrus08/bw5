@@ -1,3 +1,4 @@
+
 const prisma = require('../db/client');
 const { TELEGRAM_BOT_TOKEN, ADMIN_CHAT_ID } = require('../config/env');
 const { retry } = require('../utils/retry');
@@ -10,10 +11,7 @@ async function tgCall(method, body){
     if(!res.ok || !data.ok) throw new Error(data.description || `TG ${method} HTTP ${res.status}`);
     return data.result;
   }, { attempts:4, baseMs:400, onError: async (e,i)=>{
-    if(i===4){
-      await prisma.deadletters.create({ data:{ channel:'TELEGRAM', endpoint:method, payload: body, error:e.message, retry_count:i } });
-      await prisma.events.create({ data:{ kind:'DEAD_LETTER_STORED', actor:'SYSTEM', source:'telegram', meta:{method,body,error:e.message} } });
-    }
+    if(i===4){ await prisma.deadletters.create({ data:{ channel:'TELEGRAM', endpoint: method, payload: body, error: e.message, retry_count:i } }); await prisma.events.create({ data:{ kind:'DEAD_LETTER_STORED', actor:'SYSTEM', source:'telegram', meta:{ method, body, error:e.message } } }); }
   }});
 }
 function sendMessage(chatId,text,extra={}){ return tgCall('sendMessage', { chat_id:chatId, text, ...extra }); }
@@ -33,7 +31,7 @@ function buildOrderKeyboard(invoice, productMode){
   return { reply_markup:{ inline_keyboard: rows } };
 }
 
-// --- Grid helpers ---
+// Grid helpers
 function buildNumberGrid(N=24, cols=6, prefix='pick'){
   const rows=[]; let row=[];
   for(let i=1;i<=N;i++){ row.push({ text:String(i), callback_data:`${prefix}:${i}` }); if(row.length===cols){ rows.push(row); row=[]; } }
@@ -45,4 +43,4 @@ function buildGrid(items=[], cols=3, mapFn=it=>({ text: it.label, data: it.id })
   if(row.length) rows.push(row); return { reply_markup:{ inline_keyboard: rows } };
 }
 
-module.exports = { sendMessage, editMessageText, answerCallbackQuery, notifyAdmin, notifyCritical, buildOrderKeyboard, buildNumberGrid, buildGrid };
+module.exports = { sendMessage, editMessageText, answerCallbackQuery, notifyAdmin, notifyCritical, buildOrderKeyboard, buildNumberGrid, buildGrid, tgCall };

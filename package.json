@@ -1,25 +1,26 @@
 {
-  "name": "bot-backend-advanced-grid",
-  "version": "1.2.0",
+  "name": "bot-backend-ultra",
+  "version": "2.0.0",
   "private": true,
-  "description": "Express + Prisma backend for WhatsApp & Telegram bots with grid keyboard and QRIS media_id.",
+  "description": "Production-grade Express + Prisma backend for WhatsApp & Telegram bots (ultra edition).",
   "main": "server.js",
   "engines": {
     "node": "20.x"
   },
   "scripts": {
-    "start": "prisma generate && prisma db push && node server.js",
-    "start:safe": "node server.js",
+    "start": "node server.js",
     "postinstall": "prisma generate",
-    "dev": "node server.js",
+    "deploy:migrate": "prisma migrate deploy",
+    "db:push": "prisma db push",
     "seed": "node src/db/migrate/seed.js",
-    "prisma:generate": "prisma generate",
-    "prisma:db-push": "prisma db push",
-    "prisma:migrate": "prisma migrate deploy"
+    "dev": "node server.js"
   },
   "dependencies": {
     "express": "^4.19.2",
+    "compression": "^1.7.4",
+    "helmet": "^7.1.0",
     "prisma": "^5.22.0",
     "@prisma/client": "^5.22.0"
-  }
+  },
+  "license": "MIT"
 }

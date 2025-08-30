@@ -1,3 +1,4 @@
+
 const express = require('express');
 const router = express.Router();
 const prisma = require('../db/client');
@@ -49,7 +50,8 @@ router.post('/', async (req, res) => {
 
     if(update.message?.text){
       const text = update.message.text.trim();
-      if(text === '/start'){ await sendMessage(chatId,'Admin panel online.'); }
+      if(text === '/start'){ await sendMessage(chatId,'Admin panel online. Perintah: /id, /on, /off, /sheet_sync, /grid, /produk'); }
+      else if(text === '/id'){ await sendMessage(chatId, `Chat ID: <code>${chatId}</code>`, { parse_mode:'HTML' }); }
       else if(text === '/on'){ await prisma.settings.upsert({ where:{ key:'bot_enabled' }, update:{ value:'true' }, create:{ key:'bot_enabled', value:'true' } }); await sendMessage(chatId,'✅ Bot ON'); }
       else if(text === '/off'){ await prisma.settings.upsert({ where:{ key:'bot_enabled' }, update:{ value:'false' }, create:{ key:'bot_enabled', value:'false' } }); await sendMessage(chatId,'⛔️ Bot OFF'); }
       else if(text === '/sheet_sync'){ const { syncAccountsFromCSV } = require('../services/sheet'); const r = await syncAccountsFromCSV(); await sendMessage(chatId, r.ok?`Sheet sync OK (upserts: ${r.upserts})`:`Sheet sync fail: ${r.error||r.reason}`); }

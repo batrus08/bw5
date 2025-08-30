@@ -1,10 +1,24 @@
-# Bot Backend — Advanced Grid Edition
 
-- Telegram: inline keyboard grid (`/grid`), grid produk (`/produk`), panel admin (✅/❌/Mark Invited/Resend).
-- WhatsApp: QRIS via `media_id` (hemat kredit Railway), menu interaktif, upload bukti → notif admin.
-- Prisma + Postgres, events audit, worker (expire/reminder/stock-pause), retry & dead-letters.
+# Bot Backend — Ultra Edition
 
-## Run
+**Goal:** stabil, aman, hemat kredit Railway, dan kaya fitur.
+- Express + Prisma + Postgres
+- Telegram admin: `/start`, `/id`, `/on`, `/off`, `/sheet_sync`, `/grid`, `/produk`, tombol ✅/❌/Mark Invited/Resend
+- WhatsApp: menu interaktif (maks 3 tombol), order → kirim **QRIS via media_id** (paling hemat Railway), upload bukti → notif admin
+- AES-256-GCM untuk `password_enc`/`otp_secret_enc`
+- Rate limit in-memory + opsi **persistent** (DB)
+- Worker: expire order, reminder, auto-pause stok, **retry dead letters**
+- Health & Status endpoint
+
+## Railway Start Command
+Gunakan **Start Command**: `node server.js`  
+Jalankan migrasi saat deploy:
+```bash
+npm run deploy:migrate
+npm run seed   # sekali saat awal
+```
+
+## Jalankan Lokal
 ```bash
 npm i
 npx prisma migrate dev
@@ -12,21 +26,26 @@ npm run seed
 npm start
 ```
 
-## Webhook
-- POST `/webhook/wa`
-- POST `/webhook/telegram/<SECRET>`
-
-## Telegram Commands
-- `/start`, `/on`, `/off`, `/sheet_sync`
-- `/confirm INV-xxx`, `/reject INV-xxx`
-- `/grid` → keypad 1..24
-- `/produk` → grid produk aktif dari DB
+## Set Telegram Webhook
+```bash
+curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook"   -d "url=$PUBLIC_URL/webhook/telegram/$WEBHOOK_SECRET_PATH"
+```
 
 ## QRIS via media_id
-1. Upload `qris.jpg/png` ke WhatsApp Cloud API → dapat `id`.
-2. Set ENV: `PAYMENT_QRIS_MEDIA_ID=<id>`.
-3. Saat order dibuat, bot kirim gambar QRIS dengan caption nominal+deadline.
+1. Upload `qris.jpg/png` → dapat `id`
+2. Set `PAYMENT_QRIS_MEDIA_ID`
+3. Bot otomatis kirim gambar QRIS + caption (nominal & deadline)
 
-## Spreadsheet CSV (opsional)
-`SHEET_CSV_URL` dengan kolom:
-`product_code,username,password,otp_secret,max_uses,current_uses,status`
+## Spreadsheet CSV
+Kolom: `product_code,username,password,otp_secret,max_uses,current_uses,status`  
+Password/OTP akan **dienkripsi** otomatis saat sinkron.
+
+## Perintah Telegram
+- `/start` → tes online
+- `/id` → cetak chat id (mudah set `ADMIN_CHAT_ID`)
+- `/grid` → keypad 1..24
+- `/produk` → grid produk aktif
+
+## Catatan
+- WA buttons maksimal 3 → sisanya gunakan **List Message** atau instruksi teks.
+- Dead letters akan di-retry otomatis (exponential backoff) oleh worker.
