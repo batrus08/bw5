@@ -1,27 +1,22 @@
-// src/db/migrate/seed.js — simple seed
-const prisma = require('../../db/client');
+const prisma = require('../client');
 
-async function main() {
-  // Create sample product
+async function main(){
   await prisma.products.upsert({
-    where: { code: 'SAMPLE' },
-    create: {
-      code: 'SAMPLE',
-      name: 'Sample Product',
-      delivery_mode: 'privat_invite',
-      duration_months: 12,
-      price_cents: 9900,
-      requires_email: false,
-    },
-    update: {},
+    where:{ code:'CGPT-SHARE' },
+    create:{ code:'CGPT-SHARE', name:'ChatGPT Sharing', delivery_mode:'sharing', duration_months:1, price_cents:150000, requires_email:false, is_active:true, sk_text:'Tidak ganti password.' },
+    update:{}
   });
-
-  console.log('Seed complete');
+  await prisma.products.upsert({
+    where:{ code:'CGPT-INVITE' },
+    create:{ code:'CGPT-INVITE', name:'ChatGPT Privat Invite', delivery_mode:'privat_invite', duration_months:1, price_cents:190000, requires_email:true, is_active:true, sk_text:'Undangan manual oleh admin.' },
+    update:{}
+  });
+  await prisma.products.upsert({
+    where:{ code:'CANVA-INVITE' },
+    create:{ code:'CANVA-INVITE', name:'Canva Team Invite', delivery_mode:'canva_invite', duration_months:1, price_cents:120000, requires_email:true, is_active:true },
+    update:{}
+  });
+  console.log('Seed done');
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-}).finally(async () => {
-  await prisma.$disconnect();
-});
+main().catch(e=>{console.error(e); process.exit(1)}).finally(async()=>{ await prisma.$disconnect(); });

@@ -1,8 +1,8 @@
 {
-  "name": "bot-backend",
-  "version": "1.0.0",
+  "name": "bot-backend-advanced",
+  "version": "1.1.0",
   "private": true,
-  "description": "Express + Prisma backend for WhatsApp & Telegram bots (Node 20 / Railway-ready)",
+  "description": "Express + Prisma backend for WhatsApp & Telegram bots (advanced features: rate limit, SLA tasks, spreadsheet sync, retries, dead letter).",
   "main": "server.js",
   "engines": {
     "node": "20.x"
