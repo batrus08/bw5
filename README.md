@@ -1,6 +1,8 @@
-# Bot Backend — Advanced
+# Bot Backend — Advanced Grid Edition
 
-Fitur: Rate limiting per user, Audit Events lengkap + idempotency, Notifikasi kritis Telegram, Integrasi Spreadsheet CSV, Menu WA interaktif (buttons/list), Pengingat deadline & auto-expire, Inline keyboard Telegram, Task Queue dengan SLA, Toggle bot ON/OFF, Auto-pause produk, Retry Queue (WA/TG), Dead Letter events, Observability.
+- Telegram: inline keyboard grid (`/grid`), grid produk (`/produk`), panel admin (✅/❌/Mark Invited/Resend).
+- WhatsApp: QRIS via `media_id` (hemat kredit Railway), menu interaktif, upload bukti → notif admin.
+- Prisma + Postgres, events audit, worker (expire/reminder/stock-pause), retry & dead-letters.
 
 ## Run
 ```bash
@@ -11,16 +13,20 @@ npm start
 ```
 
 ## Webhook
-- WA: `POST /webhook/wa`
-- Telegram: `POST /webhook/telegram/<SECRET>`
+- POST `/webhook/wa`
+- POST `/webhook/telegram/<SECRET>`
 
-## Commands (Telegram)
-`/start`, `/on`, `/off`, `/sheet_sync`, `/confirm INV-xxx`, `/reject INV-xxx`
+## Telegram Commands
+- `/start`, `/on`, `/off`, `/sheet_sync`
+- `/confirm INV-xxx`, `/reject INV-xxx`
+- `/grid` → keypad 1..24
+- `/produk` → grid produk aktif dari DB
 
-## Spreadsheet
-Set `SHEET_MODE=csv` dan `SHEET_CSV_URL` berisi CSV dengan kolom:
+## QRIS via media_id
+1. Upload `qris.jpg/png` ke WhatsApp Cloud API → dapat `id`.
+2. Set ENV: `PAYMENT_QRIS_MEDIA_ID=<id>`.
+3. Saat order dibuat, bot kirim gambar QRIS dengan caption nominal+deadline.
+
+## Spreadsheet CSV (opsional)
+`SHEET_CSV_URL` dengan kolom:
 `product_code,username,password,otp_secret,max_uses,current_uses,status`
-
-## Notes
-- WA menu interaktif membutuhkan kredensial WA Cloud API (`WA_ACCESS_TOKEN`, `WA_PHONE_NUMBER_ID`).
-- Retry & Dead-letter aktif otomatis bila API gagal berkali-kali.

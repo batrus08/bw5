@@ -1,4 +1,3 @@
-// server.js — Node 20.x, Express
 const express = require('express');
 const health = require('./src/routes/health');
 const status = require('./src/routes/status');
@@ -10,21 +9,17 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 app.set('trust proxy', true);
 
-// ===== WhatsApp webhook (needs raw body for HMAC verify) =====
-app.use(
-  '/webhook/wa',
-  express.json({
-    limit: '512kb',
-    verify: (req, res, buf) => { req.rawBody = buf; },
-    type: ['application/json', 'application/*+json'],
-  }),
-  waWebhook
-);
+// WhatsApp webhook needs raw body preserved for signature
+app.use('/webhook/wa', express.json({
+  limit: '512kb',
+  verify: (req, res, buf) => { req.rawBody = buf; },
+  type: ['application/json', 'application/*+json'],
+}), waWebhook);
 
-// ===== General JSON parser (Telegram, REST, etc.) =====
+// General JSON parser
 app.use(express.json({ limit: '512kb', strict: true }));
 
-// ===== Minimal CORS =====
+// CORS minimal
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
@@ -33,48 +28,28 @@ app.use((req, res, next) => {
   next();
 });
 
-// ===== App routes =====
+// Routes
 app.use('/healthz', health);
 app.use('/status', status);
 
-// ---- Telegram webhook path ----
-const tgPath = process.env.WEBHOOK_SECRET_PATH
-  ? `/webhook/telegram/${process.env.WEBHOOK_SECRET_PATH}`
-  : '/webhook/telegram';
-
+const tgPath = process.env.WEBHOOK_SECRET_PATH ? `/webhook/telegram/${process.env.WEBHOOK_SECRET_PATH}` : '/webhook/telegram';
 app.use(tgPath, telegramWebhook);
 
-// Root
-app.get('/', (_req, res) => {
-  res.json({
-    ok: true,
-    healthz: '/healthz',
-    status: '/status',
-    telegram_webhook: tgPath,
-    wa_webhook: '/webhook/wa',
-  });
-});
+app.get('/', (_req, res) => res.json({ ok:true, healthz:'/healthz', status:'/status', telegram_webhook: tgPath, wa_webhook:'/webhook/wa' }));
 
-// JSON syntax error handler
+// Error JSON
 app.use((err, _req, res, next) => {
-  if (err && err.type === 'entity.parse.failed') {
-    return res.status(400).json({ ok: false, error: 'INVALID_JSON' });
-  }
+  if (err && err.type === 'entity.parse.failed') return res.status(400).json({ ok:false, error:'INVALID_JSON' });
   next(err);
 });
 
-// 404
-app.use((_req, res) => res.status(404).json({ ok: false, error: 'NOT_FOUND' }));
+app.use((_req, res) => res.status(404).json({ ok:false, error:'NOT_FOUND' }));
 
-// Start server
 const server = app.listen(PORT, () => {
   console.log(`Node ${process.version} listening on :${PORT}`);
   if (process.env.PUBLIC_URL) console.log(`Public URL: ${process.env.PUBLIC_URL}`);
   console.log(`Telegram webhook mounted at: ${tgPath}`);
-  startWorkers(); // start in-process workers
+  startWorkers();
 });
 
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, closing server...');
-  server.close(() => process.exit(0));
-});
+process.on('SIGTERM', () => { server.close(() => process.exit(0)); });

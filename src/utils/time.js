@@ -1,7 +1,3 @@
 function pad(n){return String(n).padStart(2,'0')}
-function formatTs(date = new Date()){
-  const y = date.getFullYear(), m=pad(date.getMonth()+1), d=pad(date.getDate());
-  const hh=pad(date.getHours()), mm=pad(date.getMinutes()), ss=pad(date.getSeconds());
-  return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
-}
+function formatTs(d=new Date()){const y=d.getFullYear(),m=pad(d.getMonth()+1),day=pad(d.getDate()),h=pad(d.getHours()),mi=pad(d.getMinutes()),s=pad(d.getSeconds()); return `${y}-${m}-${day} ${h}:${mi}:${s}`;}
 module.exports = { formatTs };
