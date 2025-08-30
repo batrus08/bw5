@@ -1,0 +1,124 @@
+// Prisma schema — fixed and completed (Node 20 / Prisma 5.x)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AccountStatus {
+  AVAILABLE
+  RESERVED
+  DISABLED
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PENDING_PAY_ACK
+  PAID
+  REJECTED
+  EXPIRED
+  REFUND_REQUESTED
+  REFUND_APPROVED
+  REFUND_REJECTED
+  DELIVERED
+}
+
+enum DeliveryMode {
+  privat_invite
+  privat_noninvite
+  sharing
+  canva_invite
+}
+
+enum EventKind {
+  ORDER_CREATED
+  ORDER_EXPIRED
+  PAY_ACK
+  ADMIN_CONFIRM
+  ADMIN_REJECT
+  REMINDER_SENT
+  REFUND_REQUESTED
+  REFUND_APPROVED
+  REFUND_REJECTED
+  DELIVERY_READY
+  DELIVERY_NO_STOCK
+  DELIVERY_RACE_FAIL
+  DELIVERY_UNKNOWN_MODE
+  INVITE_QUEUED
+  TELEGRAM_EDIT_FAIL
+  WA_INVALID_SIGNATURE
+}
+
+model products {
+  code            String        @id
+  name            String
+  delivery_mode   DeliveryMode
+  duration_months Int?
+  price_cents     Int
+  requires_email  Boolean       @default(false)
+
+  accounts  accounts[]
+  orders    orders[]
+
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+}
+
+model accounts {
+  id             Int           @id @default(autoincrement())
+  product_code   String
+  username       String
+  password_enc   String
+  otp_secret_enc String?
+  status         AccountStatus @default(AVAILABLE)
+
+  product        products      @relation(fields: [product_code], references: [code], onUpdate: Cascade, onDelete: Restrict)
+  orders         orders[]      @relation("OrderAccount")
+
+  created_at     DateTime      @default(now())
+  updated_at     DateTime      @updatedAt
+
+  @@index([status])
+  @@index([product_code])
+  @@unique([product_code, username])
+}
+
+model orders {
+  id           BigInt      @id @default(autoincrement())
+  invoice      String      @unique
+  buyer_phone  String
+  product_code String
+  qty          Int         @default(1)
+  amount_cents Int
+  status       OrderStatus @default(PENDING_PAYMENT)
+  email        String?
+  account_id   Int?
+  pay_ack_at   DateTime?
+
+  product      products    @relation(fields: [product_code], references: [code], onUpdate: Cascade, onDelete: Restrict)
+  account      accounts?   @relation("OrderAccount", fields: [account_id], references: [id], onUpdate: Cascade, onDelete: SetNull)
+  events       events[]
+
+  created_at   DateTime    @default(now())
+  updated_at   DateTime    @updatedAt
+
+  @@index([status])
+  @@index([product_code, created_at])
+  @@index([buyer_phone])
+}
+
+model events {
+  id         BigInt    @id @default(autoincrement())
+  order_id   BigInt
+  kind       EventKind
+  message    String?
+  created_at DateTime  @default(now())
+
+  order      orders    @relation(fields: [order_id], references: [id], onUpdate: Cascade, onDelete: Cascade)
+
+  @@index([order_id, created_at])
+}

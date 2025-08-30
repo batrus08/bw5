@@ -1,0 +1,15 @@
+
+# Fix v3 — Missing `node-fetch` & Prisma schema
+
+**What failed:** Runtime error `Cannot find module 'node-fetch'` from `src/services/telegram.js`.
+**Why:** The code used `require('node-fetch')`, but the package was not installed. Since Node 20.x already provides **global fetch**, we removed the dependency.
+
+**Changes in this patch**
+- `src/services/telegram.js`: now uses `globalThis.fetch` (works on Node 18+; you pin `20.x`).
+- `prisma/schema.prisma`: fixed multi-line enums + completed models.
+- `package.json`: moved `prisma` to dependencies and added `postinstall: prisma generate`.
+- Added `.env.example`.
+
+**Deploy notes**
+- Ensure `DATABASE_URL` and `ENCRYPTION_KEY` (32‑byte base64) are set.
+- Prefer `npm run start:safe` if you don't want to run `db push` at every boot.
