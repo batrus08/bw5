@@ -7,10 +7,8 @@ const prisma = require('../db/client');
 const { sendMessage, editMessageText, answerCallbackQuery } = require('../services/telegram');
 const { formatTs } = require('../utils/time');
 
-
-router.get('/', (_req, res) => res.sendStatus(200));
 router.post('/'), async (req, res) => {
-  // secret already encoded in mount path; no extra check
+  // secret validated via mount path in server.js
   const update = req.body; console.log('TG webhook update:', JSON.stringify(update));
   const msg = update.message || update.edited_message || update.callback_query?.message;
   const chatId = msg?.chat?.id;
