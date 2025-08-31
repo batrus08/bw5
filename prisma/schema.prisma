@@ -1,25 +1,91 @@
 
-generator client { provider = "prisma-client-js" }
-datasource db { provider = "postgresql"; url = env("DATABASE_URL") }
+generator client {
+  provider = "prisma-client-js"
+}
 
-enum AccountStatus { AVAILABLE RESERVED DISABLED }
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AccountStatus {
+  AVAILABLE
+  RESERVED
+  DISABLED
+}
+
 enum OrderStatus {
-  PENDING_PAYMENT PENDING_PAY_ACK PAID DELIVERED REJECTED EXPIRED
-  REFUND_REQUESTED REFUND_APPROVED REFUND_REJECTED
+  PENDING_PAYMENT
+  PENDING_PAY_ACK
+  PAID
+  DELIVERED
+  REJECTED
+  EXPIRED
+  REFUND_REQUESTED
+  REFUND_APPROVED
+  REFUND_REJECTED
 }
-enum DeliveryMode { sharing privat_noninvite privat_invite canva_invite voucher }
+
+enum DeliveryMode {
+  sharing
+  privat_noninvite
+  privat_invite
+  canva_invite
+  voucher
+}
+
 enum EventKind {
-  ORDER_CREATED ORDER_EXPIRED PAY_ACK ADMIN_CONFIRM ADMIN_REJECT
-  REMINDER_SENT REFUND_REQUESTED REFUND_APPROVED REFUND_REJECTED
-  DELIVERY_READY DELIVERY_NO_STOCK DELIVERY_RACE_FAIL DELIVERY_UNKNOWN_MODE
-  INVITE_QUEUED INVITE_ADMIN_CONFIRMED INVITE_SENT_BY_ADMIN TELEGRAM_EDIT_FAIL
-  WA_INVALID_SIGNATURE STOCK_ZERO_PAUSE STOCK_BACK_ONLINE BOT_TURNED_ON BOT_TURNED_OFF
-  SHEET_SYNC_OK SHEET_SYNC_FAIL RATE_LIMITED DEAD_LETTER_STORED
+  ORDER_CREATED
+  ORDER_EXPIRED
+  PAY_ACK
+  ADMIN_CONFIRM
+  ADMIN_REJECT
+  REMINDER_SENT
+  REFUND_REQUESTED
+  REFUND_APPROVED
+  REFUND_REJECTED
+  DELIVERY_READY
+  DELIVERY_NO_STOCK
+  DELIVERY_RACE_FAIL
+  DELIVERY_UNKNOWN_MODE
+  INVITE_QUEUED
+  INVITE_ADMIN_CONFIRMED
+  INVITE_SENT_BY_ADMIN
+  TELEGRAM_EDIT_FAIL
+  WA_INVALID_SIGNATURE
+  STOCK_ZERO_PAUSE
+  STOCK_BACK_ONLINE
+  BOT_TURNED_ON
+  BOT_TURNED_OFF
+  SHEET_SYNC_OK
+  SHEET_SYNC_FAIL
+  RATE_LIMITED
+  DEAD_LETTER_STORED
 }
-enum Actor { SYSTEM ADMIN CUSTOMER }
-enum TaskKind { INVITE_CHATGPT INVITE_CANVA RESEND_INVITE FOLLOWUP_PAYMENT }
-enum TaskStatus { OPEN DONE CANCELLED }
-enum Channel { TELEGRAM WHATSAPP }
+
+enum Actor {
+  SYSTEM
+  ADMIN
+  CUSTOMER
+}
+
+enum TaskKind {
+  INVITE_CHATGPT
+  INVITE_CANVA
+  RESEND_INVITE
+  FOLLOWUP_PAYMENT
+}
+
+enum TaskStatus {
+  OPEN
+  DONE
+  CANCELLED
+}
+
+enum Channel {
+  TELEGRAM
+  WHATSAPP
+}
 
 model products {
   code            String   @id
@@ -31,50 +97,58 @@ model products {
   is_active       Boolean  @default(true)
   daily_limit     Int?
   sk_text         String?
-  accounts  accounts[]
-  orders    orders[]
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+
+  accounts        accounts[]
+  orders          orders[]
+
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
 }
 
 model accounts {
-  id             Int @id @default(autoincrement())
+  id             Int           @id @default(autoincrement())
   product_code   String
   username       String
   password_enc   String
   otp_secret_enc String?
   status         AccountStatus @default(AVAILABLE)
-  max_uses       Int @default(1)
-  current_uses   Int @default(0)
-  product  products @relation(fields:[product_code], references:[code], onUpdate: Cascade, onDelete: Restrict)
-  orders   orders[] @relation("OrderAccount")
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  max_uses       Int           @default(1)
+  current_uses   Int           @default(0)
+
+  product        products      @relation(fields: [product_code], references: [code], onUpdate: Cascade, onDelete: Restrict)
+  orders         orders[]      @relation("OrderAccount")
+
+  created_at     DateTime      @default(now())
+  updated_at     DateTime      @updatedAt
+
   @@index([status])
   @@index([product_code])
-  @@unique([product_code, username])
+  @@unique([product_code, username], name: "product_code_username")
 }
 
 model orders {
-  id           BigInt @id @default(autoincrement())
-  invoice      String @unique
+  id           BigInt        @id @default(autoincrement())
+  invoice      String        @unique
   buyer_phone  String
   product_code String
-  qty          Int @default(1)
+  qty          Int           @default(1)
   amount_cents Int
-  status       OrderStatus @default(PENDING_PAYMENT)
+  status       OrderStatus   @default(PENDING_PAYMENT)
   email        String?
   account_id   Int?
   pay_ack_at   DateTime?
   deadline_at  DateTime?
   proof_id     String?
   proof_mime   String?
-  product products @relation(fields:[product_code], references:[code], onUpdate: Cascade, onDelete: Restrict)
-  account accounts? @relation("OrderAccount", fields:[account_id], references:[id], onUpdate: Cascade, onDelete: SetNull)
-  events  events[]
-  tasks   tasks[]
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+
+  product      products      @relation(fields: [product_code], references: [code], onUpdate: Cascade, onDelete: Restrict)
+  account      accounts?     @relation("OrderAccount", fields: [account_id], references: [id], onUpdate: Cascade, onDelete: SetNull)
+  events       events[]
+  tasks        tasks[]
+
+  created_at   DateTime      @default(now())
+  updated_at   DateTime      @updatedAt
+
   @@index([status])
   @@index([product_code, created_at])
   @@index([buyer_phone])
@@ -82,34 +156,68 @@ model orders {
 }
 
 model events {
-  id BigInt @id @default(autoincrement())
-  order_id BigInt?
-  kind EventKind
-  actor Actor @default(SYSTEM)
-  source String?
-  meta Json?
-  idempotency_key String?
-  created_at DateTime @default(now())
-  order orders? @relation(fields:[order_id], references:[id], onUpdate: Cascade, onDelete: SetNull)
+  id               BigInt     @id @default(autoincrement())
+  order_id         BigInt?
+  kind             EventKind
+  actor            Actor      @default(SYSTEM)
+  source           String?
+  meta             Json?
+  idempotency_key  String?
+  created_at       DateTime   @default(now())
+
+  order            orders?    @relation(fields: [order_id], references: [id], onUpdate: Cascade, onDelete: SetNull)
+
   @@index([order_id, created_at])
   @@index([kind])
   @@index([idempotency_key])
 }
 
 model tasks {
-  id BigInt @id @default(autoincrement())
-  order_id BigInt
-  kind TaskKind
-  status TaskStatus @default(OPEN)
-  due_at DateTime?
-  note String?
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-  order orders @relation(fields:[order_id], references:[id], onUpdate: Cascade, onDelete: Cascade)
+  id         BigInt     @id @default(autoincrement())
+  order_id   BigInt
+  kind       TaskKind
+  status     TaskStatus @default(OPEN)
+  due_at     DateTime?
+  note       String?
+  created_at DateTime   @default(now())
+  updated_at DateTime   @updatedAt
+
+  order      orders     @relation(fields: [order_id], references: [id], onUpdate: Cascade, onDelete: Cascade)
+
   @@index([status, due_at])
 }
 
-model settings { key String @id; value String?; updated_at DateTime @default(now()) @updatedAt }
-model otptokens { id String @id; order_id BigInt; expires_at DateTime; used Boolean @default(false); created_at DateTime @default(now()); @@index([order_id, expires_at]) }
-model deadletters { id BigInt @id @default(autoincrement()); channel Channel; endpoint String?; payload Json; error String?; retry_count Int @default(0); created_at DateTime @default(now()); last_attempt DateTime @default(now()) }
-model ratelogs { id BigInt @id @default(autoincrement()); key String; ts DateTime @default(now()); @@index([key, ts]) }
+model settings {
+  key        String   @id
+  value      String?
+  updated_at DateTime @default(now()) @updatedAt
+}
+
+model otptokens {
+  id          String   @id
+  order_id    BigInt
+  expires_at  DateTime
+  used        Boolean  @default(false)
+  created_at  DateTime @default(now())
+
+  @@index([order_id, expires_at])
+}
+
+model deadletters {
+  id           BigInt   @id @default(autoincrement())
+  channel      Channel
+  endpoint     String?
+  payload      Json
+  error        String?
+  retry_count  Int      @default(0)
+  created_at   DateTime @default(now())
+  last_attempt DateTime @default(now())
+}
+
+model ratelogs {
+  id    BigInt   @id @default(autoincrement())
+  key   String
+  ts    DateTime @default(now())
+
+  @@index([key, ts])
+}

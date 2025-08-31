@@ -16,14 +16,14 @@ async function tgCall(method, body){
         await prisma.events.create({ data:{ kind:'DEAD_LETTER_STORED', actor:'SYSTEM', source:'telegram', meta:{ method, body, error:e.message } } });
         throw e;
       }
-      await new Promise(r=>setTimeout(r, 400 * (2**i)));
+      await new Promise(r=>setTimeout(r, 400*(2**i)));
     }
   }
 }
 
-function sendMessage(chatId,text,extra={}){ return tgCall('sendMessage', { chat_id:chatId, text, ...extra }); }
-function editMessageText(chatId,messageId,text,extra={}){ return tgCall('editMessageText', { chat_id:chatId, message_id:messageId, text, ...extra }); }
-function answerCallbackQuery(id,text='',extra={}){ return tgCall('answerCallbackQuery',{ callback_query_id:id, text, ...extra }); }
+function sendMessage(chatId, text, extra={}){ return tgCall('sendMessage', { chat_id:chatId, text, ...extra }); }
+function editMessageText(chatId, messageId, text, extra={}){ return tgCall('editMessageText', { chat_id:chatId, message_id:messageId, text, ...extra }); }
+function answerCallbackQuery(id, text='', extra={}){ return tgCall('answerCallbackQuery', { callback_query_id:id, text, ...extra }); }
 async function notifyAdmin(text){ try{ await sendMessage(ADMIN_CHAT_ID, text, { parse_mode:'HTML' }); }catch(_){} }
 async function notifyCritical(text){ await notifyAdmin('⚠️ <b>CRITICAL</b>\n'+text); }
 
@@ -38,7 +38,21 @@ function buildOrderKeyboard(invoice, productMode){
   return { reply_markup:{ inline_keyboard: rows } };
 }
 
-function buildNumberGrid(N=24, cols=6, prefix='pick'){ const rows=[]; let row=[]; for(let i=1;i<=N;i++){ row.push({ text:String(i), callback_data:`${prefix}:${i}` }); if(row.length===cols){ rows.push(row); row=[]; } } if(row.length) rows.push(row); return { reply_markup:{ inline_keyboard: rows } }; }
-function buildGrid(items=[], cols=3, mapFn=it=>({ text: it.label, data: it.id })){ const rows=[]; let row=[]; for(const it of items){ const m=mapFn(it); row.push({ text:m.text, callback_data:`sel:${m.data}` }); if(row.length===cols){ rows.push(row); row=[]; } } if(row.length) rows.push(row); return { reply_markup:{ inline_keyboard: rows } }; }
+function buildNumberGrid(N=24, cols=6, prefix='pick'){
+  const rows=[]; let row=[];
+  for(let i=1;i<=N;i++){ row.push({ text:String(i), callback_data:`${prefix}:${i}` }); if(row.length===cols){ rows.push(row); row=[]; } }
+  if(row.length) rows.push(row);
+  return { reply_markup:{ inline_keyboard: rows } };
+}
+function buildGrid(items=[], cols=3, mapFn=it=>({ text: it.label, data: it.id })){
+  const rows=[]; let row=[];
+  for(const it of items){
+    const m = mapFn(it);
+    row.push({ text:m.text, callback_data:`sel:${m.data}` });
+    if(row.length===cols){ rows.push(row); row=[]; }
+  }
+  if(row.length) rows.push(row);
+  return { reply_markup:{ inline_keyboard: rows } };
+}
 
 module.exports = { sendMessage, editMessageText, answerCallbackQuery, notifyAdmin, notifyCritical, buildOrderKeyboard, buildNumberGrid, buildGrid, tgCall };

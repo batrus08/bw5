@@ -7,7 +7,7 @@ async function waCall(path, body){
   if(!WA_ACCESS_TOKEN || !WA_PHONE_NUMBER_ID) throw new Error('WA credentials missing');
   for(let i=0;i<4;i++){
     try{
-      const res = await fetch(endpoint(path), { method:'POST', headers:{ 'Authorization':`Bearer ${WA_ACCESS_TOKEN}`,'Content-Type':'application/json' }, body: JSON.stringify(body) });
+      const res = await fetch(endpoint(path), { method:'POST', headers:{ 'Authorization':`Bearer ${WA_ACCESS_TOKEN}`, 'Content-Type':'application/json' }, body: JSON.stringify(body) });
       const data = await res.json().catch(()=>({}));
       if(!res.ok) throw new Error(`WA ${res.status}: ${data.error?.message||'unknown'}`);
       return data;
@@ -17,7 +17,7 @@ async function waCall(path, body){
         await prisma.events.create({ data:{ kind:'DEAD_LETTER_STORED', actor:'SYSTEM', source:'wa', meta:{ path, body, error:e.message } } });
         throw e;
       }
-      await new Promise(r=>setTimeout(r, 400 * (2**i)));
+      await new Promise(r=>setTimeout(r, 400*(2**i)));
     }
   }
 }

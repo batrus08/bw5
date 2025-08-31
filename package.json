@@ -1,11 +1,11 @@
 {
-  "name": "bot-backend-ultra-max",
-  "version": "2.1.0",
+  "name": "bot-backend-ultra-final",
+  "version": "2.2.0",
   "private": true,
-  "description": "Production-grade Express + Prisma backend for WhatsApp & Telegram bots (ultra max).",
+  "description": "Express + Prisma backend for WhatsApp (customer) & Telegram (admin) \u2014 production ready.",
   "main": "server.js",
   "engines": {
-    "node": "20.x"
+    "node": ">=18"
   },
   "scripts": {
     "start": "node server.js",
