@@ -1,4 +1,4 @@
-
+require('dotenv').config();
 const crypto = require('crypto');
 function assertNonEmpty(name, v){ if(v===undefined||v===null||String(v).trim()===''){ throw new Error(`${name} is required`);} return v; }
 

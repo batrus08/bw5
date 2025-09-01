@@ -1,5 +1,3 @@
-
-require('dotenv').config();
 require('./src/config/env');
 const express = require('express');
 const compression = require('compression');
