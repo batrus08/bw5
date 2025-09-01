@@ -1,4 +1,4 @@
-
+require('../../config/env');
 const prisma = require('../client');
 async function main(){
   await prisma.products.upsert({ where:{ code:'CGPT-SHARE' },  create:{ code:'CGPT-SHARE',  name:'ChatGPT Sharing',       delivery_mode:'sharing',       duration_months:1, price_cents:150000, requires_email:false, is_active:true, sk_text:'Tidak ganti password.' }, update:{} });
