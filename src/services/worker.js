@@ -51,7 +51,17 @@ async function checkStockAndPause(){
 
 async function retryDeadLetters(){
   const maxRetry = 6;
-  const list = await prisma.deadletters.findMany({ where:{ retry_count:{ lt: maxRetry } }, take:20, orderBy:{ last_attempt:'asc' } });
+  let list = [];
+  try {
+    list = await prisma.deadletters.findMany({
+      where: { retry_count: { lt: maxRetry } },
+      take: 20,
+      orderBy: { last_attempt: 'asc' },
+    });
+  } catch (e) {
+    if (e.code === 'P2021') return; // table does not exist yet
+    throw e;
+  }
   for(const d of list){
     const waitMs = Math.pow(2, d.retry_count) * 30_000;
     if(Date.now() - new Date(d.last_attempt).getTime() < waitMs) continue;
@@ -60,7 +70,10 @@ async function retryDeadLetters(){
       else if (d.channel === 'WHATSAPP') await waCall(d.endpoint || 'messages', d.payload);
       await prisma.deadletters.delete({ where:{ id: d.id } });
     } catch (e) {
-      await prisma.deadletters.update({ where:{ id: d.id }, data:{ retry_count: d.retry_count+1, last_attempt: new Date(), error: e.message } });
+      await prisma.deadletters.update({
+        where:{ id: d.id },
+        data:{ retry_count: d.retry_count+1, last_attempt: new Date(), error: e.message }
+      });
     }
   }
 }
