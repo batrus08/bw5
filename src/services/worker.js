@@ -21,7 +21,14 @@ async function remindPayments(){
   const now = new Date();
   const start = new Date(now.getTime() - minutes(PAYMENT_DEADLINE_MIN));
   const soon = new Date(start.getTime() + minutes(5));
-  const list = await prisma.orders.findMany({ where:{ status:'PENDING_PAYMENT', created_at:{ gt: start, lte: soon } }, include:{ events:true } });
+  const list = await prisma.orders.findMany({
+    where: { status: 'PENDING_PAYMENT', created_at: { gt: start, lte: soon } },
+    select: {
+      id: true,
+      invoice: true,
+      events: { select: { kind: true } },
+    },
+  });
   for(const o of list){
     if(o.events.some(e=>e.kind==='REMINDER_SENT')) continue;
     await prisma.events.create({ data:{ order_id:o.id, kind:'REMINDER_SENT', actor:'SYSTEM', source:'worker' } });
