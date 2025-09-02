@@ -137,7 +137,6 @@ model orders {
   email        String?
   account_id   Int?
   pay_ack_at   DateTime?
-  deadline_at  DateTime?
   proof_id     String?
   proof_mime   String?
 
@@ -152,7 +151,6 @@ model orders {
   @@index([status])
   @@index([product_code, created_at])
   @@index([buyer_phone])
-  @@index([deadline_at])
 }
 
 model events {
