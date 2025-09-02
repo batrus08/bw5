@@ -1,6 +1,6 @@
 
 const prisma = require('../db/client');
-const { SHEET_POLL_MS } = require('../config/env');
+const { SHEET_POLL_MS, PAYMENT_DEADLINE_MIN } = require('../config/env');
 const { syncAccountsFromCSV } = require('./sheet');
 const { notifyAdmin, notifyCritical, tgCall } = require('./telegram');
 const { waCall } = require('./wa');
@@ -9,7 +9,8 @@ function minutes(n){ return n*60*1000; }
 
 async function expireOrders(){
   const now = new Date();
-  const expired = await prisma.orders.updateMany({ where:{ status:'PENDING_PAYMENT', deadline_at:{ lt: now } }, data:{ status:'EXPIRED' } });
+  const threshold = new Date(now.getTime() - minutes(PAYMENT_DEADLINE_MIN));
+  const expired = await prisma.orders.updateMany({ where:{ status:'PENDING_PAYMENT', created_at:{ lt: threshold } }, data:{ status:'EXPIRED' } });
   if(expired.count>0){
     await prisma.events.create({ data:{ kind:'ORDER_EXPIRED', actor:'SYSTEM', source:'worker', meta:{ count: expired.count } } });
     await notifyAdmin(`⏰ <b>${expired.count}</b> order expired`);
@@ -18,8 +19,9 @@ async function expireOrders(){
 
 async function remindPayments(){
   const now = new Date();
-  const soon = new Date(Date.now()+minutes(5));
-  const list = await prisma.orders.findMany({ where:{ status:'PENDING_PAYMENT', deadline_at:{ lte: soon, gt: now } }, include:{ events:true } });
+  const start = new Date(now.getTime() - minutes(PAYMENT_DEADLINE_MIN));
+  const soon = new Date(start.getTime() + minutes(5));
+  const list = await prisma.orders.findMany({ where:{ status:'PENDING_PAYMENT', created_at:{ gt: start, lte: soon } }, include:{ events:true } });
   for(const o of list){
     if(o.events.some(e=>e.kind==='REMINDER_SENT')) continue;
     await prisma.events.create({ data:{ order_id:o.id, kind:'REMINDER_SENT', actor:'SYSTEM', source:'worker' } });

@@ -6,8 +6,7 @@ function toCents(n){ return Math.round(Number(n||0)); }
 
 async function createOrder({ buyer_phone, product_code, qty=1, amount_cents, email }){
   const invoice = 'INV-' + Date.now();
-  const deadline_at = new Date(Date.now() + (Number(process.env.PAYMENT_DEADLINE_MIN||30))*60*1000);
-  const order = await prisma.orders.create({ data:{ invoice, buyer_phone, product_code, qty, amount_cents: toCents(amount_cents), status:'PENDING_PAYMENT', email, deadline_at } });
+  const order = await prisma.orders.create({ data:{ invoice, buyer_phone, product_code, qty, amount_cents: toCents(amount_cents), status:'PENDING_PAYMENT', email } });
   await addEvent(order.id, 'ORDER_CREATED', `Order ${invoice} created`);
   return order;
 }
