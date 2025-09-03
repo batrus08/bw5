@@ -42,8 +42,13 @@ router.post('/', async (req, res) => {
         await sendMessage(chatId, `🔁 Request new proof for ${invoice}`);
       } else if (data.startsWith('resend:')) {
         const invoice = data.split(':')[1];
-        await prisma.tasks.create({ data:{ order_id: (await prisma.orders.findUnique({ where:{ invoice } })).id, kind:'RESEND_INVITE' } });
-        await sendMessage(chatId, `🔁 Resend task queued for ${invoice}`);
+        const order = await prisma.orders.findUnique({ where:{ invoice } });
+        if(order){
+          await prisma.tasks.create({ data:{ order_id: order.id, kind:'RESEND_INVITE' } });
+          await sendMessage(chatId, `🔁 Resend task queued for ${invoice}`);
+        } else {
+          await sendMessage(chatId, `❌ Order ${invoice} not found`);
+        }
       }
       return res.sendStatus(200);
     }
