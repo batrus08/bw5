@@ -1,4 +1,3 @@
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -88,65 +87,72 @@ enum Channel {
 }
 
 model products {
-  code            String   @id
+  code            String       @id
   name            String
   delivery_mode   DeliveryMode
   duration_months Int?
   price_cents     Int
-  requires_email  Boolean  @default(false)
-  is_active       Boolean  @default(true)
+  requires_email  Boolean      @default(false)
+  is_active       Boolean      @default(true)
   daily_limit     Int?
   sk_text         String?
 
-  accounts        accounts[]
-  orders          orders[]
+  accounts accounts[]
+  orders   orders[]
 
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 }
 
 model accounts {
-  id             Int           @id @default(autoincrement())
-  product_code   String
-  username       String
-  password_enc   String
-  otp_secret_enc String?
-  status         AccountStatus @default(AVAILABLE)
-  max_uses       Int           @default(1)
-  current_uses   Int           @default(0)
+  id               Int           @id @default(autoincrement())
+  product_code     String
+  username         String
+  password_enc     String
+  otp_secret_enc   String?
+  otp_seed         String?
+  invite_api       String?
+  variant_type     String?
+  variant_duration Int?
+  price_override   Int?
+  tnc              String?
+  status           AccountStatus @default(AVAILABLE)
+  max_uses         Int           @default(1)
+  current_uses     Int           @default(0)
 
-  product        products      @relation(fields: [product_code], references: [code], onUpdate: Cascade, onDelete: Restrict)
-  orders         orders[]      @relation("OrderAccount")
+  product products @relation(fields: [product_code], references: [code], onUpdate: Cascade, onDelete: Restrict)
+  orders  orders[] @relation("OrderAccount")
 
-  created_at     DateTime      @default(now())
-  updated_at     DateTime      @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
+  @@unique([product_code, username], name: "product_code_username")
   @@index([status])
   @@index([product_code])
-  @@unique([product_code, username], name: "product_code_username")
 }
 
 model orders {
-  id           BigInt        @id @default(autoincrement())
-  invoice      String        @unique
-  buyer_phone  String
-  product_code String
-  qty          Int           @default(1)
-  amount_cents Int
-  status       OrderStatus   @default(PENDING_PAYMENT)
-  email        String?
-  account_id   Int?
-  pay_ack_at   DateTime?
-  proof_id     String?
-  proof_mime   String?
+  id              BigInt      @id @default(autoincrement())
+  invoice         String      @unique
+  buyer_phone     String
+  product_code    String
+  qty             Int         @default(1)
+  amount_cents    Int
+  status          OrderStatus @default(PENDING_PAYMENT)
+  email           String?
+  account_id      Int?
+  pay_ack_at      DateTime?
+  proof_id        String?
+  proof_mime      String?
+  synced_to_sheet Boolean     @default(false)
 
-  product      products      @relation(fields: [product_code], references: [code], onUpdate: Cascade, onDelete: Restrict)
-  account      accounts?     @relation("OrderAccount", fields: [account_id], references: [id], onUpdate: Cascade, onDelete: SetNull)
-  events       events[]
-  tasks        tasks[]
+  product products  @relation(fields: [product_code], references: [code], onUpdate: Cascade, onDelete: Restrict)
+  account accounts? @relation("OrderAccount", fields: [account_id], references: [id], onUpdate: Cascade, onDelete: SetNull)
+  events  events[]
+  tasks   tasks[]
 
-  created_at   DateTime      @default(now())
-  updated_at   DateTime      @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
   @@index([status])
   @@index([product_code, created_at])
@@ -154,16 +160,16 @@ model orders {
 }
 
 model events {
-  id               BigInt     @id @default(autoincrement())
-  order_id         BigInt?
-  kind             EventKind
-  actor            Actor      @default(SYSTEM)
-  source           String?
-  meta             Json?
-  idempotency_key  String?
-  created_at       DateTime   @default(now())
+  id              BigInt    @id @default(autoincrement())
+  order_id        BigInt?
+  kind            EventKind
+  actor           Actor     @default(SYSTEM)
+  source          String?
+  meta            Json?
+  idempotency_key String?
+  created_at      DateTime  @default(now())
 
-  order            orders?    @relation(fields: [order_id], references: [id], onUpdate: Cascade, onDelete: SetNull)
+  order orders? @relation(fields: [order_id], references: [id], onUpdate: Cascade, onDelete: SetNull)
 
   @@index([order_id, created_at])
   @@index([kind])
@@ -180,7 +186,7 @@ model tasks {
   created_at DateTime   @default(now())
   updated_at DateTime   @updatedAt
 
-  order      orders     @relation(fields: [order_id], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  order orders @relation(fields: [order_id], references: [id], onUpdate: Cascade, onDelete: Cascade)
 
   @@index([status, due_at])
 }
@@ -192,11 +198,11 @@ model settings {
 }
 
 model otptokens {
-  id          String   @id
-  order_id    BigInt
-  expires_at  DateTime
-  used        Boolean  @default(false)
-  created_at  DateTime @default(now())
+  id         String   @id
+  order_id   BigInt
+  expires_at DateTime
+  used       Boolean  @default(false)
+  created_at DateTime @default(now())
 
   @@index([order_id, expires_at])
 }
@@ -213,9 +219,9 @@ model deadletters {
 }
 
 model ratelogs {
-  id    BigInt   @id @default(autoincrement())
-  key   String
-  ts    DateTime @default(now())
+  id  BigInt   @id @default(autoincrement())
+  key String
+  ts  DateTime @default(now())
 
   @@index([key, ts])
 }

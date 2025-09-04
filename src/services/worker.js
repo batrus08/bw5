@@ -89,7 +89,13 @@ async function retryDeadLetters(){
   }
 }
 
-function startWorkers(){
+async function startWorkers(){
+  try {
+    await prisma.orders.findFirst({ select:{ id:true }, take:1 });
+  } catch(e) {
+    if(e.code === 'P2021') { console.log('Workers skipped: tables not ready'); return; }
+    throw e;
+  }
   setInterval(wrap(expireOrders,'expireOrders'), minutes(1));
   setInterval(wrap(remindPayments,'remindPayments'), minutes(1));
   setInterval(wrap(checkStockAndPause,'checkStockAndPause'), minutes(5));

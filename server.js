@@ -9,6 +9,7 @@ const waWebhook = require('./src/whatsapp/webhook');
 const { startWorkers } = require('./src/services/worker');
 const { requestLogger } = require('./src/utils/logger');
 const { migrateIfEnabled } = require('./src/preflight/migrate');
+const { runGuard } = require('./src/preflight/guard');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -55,7 +56,8 @@ const server = app.listen(PORT, async () => {
   if (process.env.PUBLIC_URL) console.log(`Public URL: ${process.env.PUBLIC_URL}`);
   console.log(`Telegram webhook mounted at: ${tgPath}`);
   await migrateIfEnabled();
-  startWorkers();
+  await runGuard();
+  await startWorkers();
 });
 
 process.on('SIGTERM', () => { console.log('SIGTERM received, closing...'); server.close(() => process.exit(0)); });
