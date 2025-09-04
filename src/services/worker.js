@@ -7,6 +7,17 @@ const { waCall } = require('./wa');
 
 function minutes(n){ return n*60*1000; }
 
+function wrap(task, name){
+  return async () => {
+    try {
+      await task();
+    } catch (e) {
+      if (e.code === 'P2021') return; // table does not exist yet
+      console.error(`[worker] ${name} error`, e);
+    }
+  };
+}
+
 async function expireOrders(){
   const now = new Date();
   const threshold = new Date(now.getTime() - minutes(PAYMENT_DEADLINE_MIN));
@@ -79,11 +90,11 @@ async function retryDeadLetters(){
 }
 
 function startWorkers(){
-  setInterval(expireOrders, minutes(1));
-  setInterval(remindPayments, minutes(1));
-  setInterval(checkStockAndPause, minutes(5));
-  setInterval(retryDeadLetters, minutes(1));
-  if(SHEET_POLL_MS>0){ setInterval(syncAccountsFromCSV, SHEET_POLL_MS); }
+  setInterval(wrap(expireOrders,'expireOrders'), minutes(1));
+  setInterval(wrap(remindPayments,'remindPayments'), minutes(1));
+  setInterval(wrap(checkStockAndPause,'checkStockAndPause'), minutes(5));
+  setInterval(wrap(retryDeadLetters,'retryDeadLetters'), minutes(1));
+  if(SHEET_POLL_MS>0){ setInterval(wrap(syncAccountsFromCSV,'syncAccountsFromCSV'), SHEET_POLL_MS); }
   console.log('Workers started.');
 }
 

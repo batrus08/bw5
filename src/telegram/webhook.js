@@ -28,25 +28,31 @@ router.post('/', async (req, res) => {
       } else if (data.startsWith('confirm:')) {
         const invoice = data.split(':')[1];
         const r = await confirmPaid(invoice);
+        await answerCallbackQuery(update.callback_query.id, r.ok ? '✅ Confirmed' : `❌ ${r.error}`);
         await sendMessage(chatId, r.ok ? `✅ Confirmed ${invoice}` : `❌ ${r.error}`);
       } else if (data.startsWith('reject:')) {
         const invoice = data.split(':')[1];
         const r = await rejectOrder(invoice);
+        await answerCallbackQuery(update.callback_query.id, r.ok ? '❌ Rejected' : `❌ ${r.error}`);
         await sendMessage(chatId, r.ok ? `❌ Rejected ${invoice}` : `❌ ${r.error}`);
       } else if (data.startsWith('invited:')) {
         const invoice = data.split(':')[1];
         const r = await markInvited(invoice);
+        await answerCallbackQuery(update.callback_query.id, r.ok ? '✅ Marked invited' : `❌ ${r.error}`);
         await sendMessage(chatId, r.ok ? `✅ Marked invited ${invoice}` : `❌ ${r.error}`);
       } else if (data.startsWith('reproof:')) {
         const invoice = data.split(':')[1];
+        await answerCallbackQuery(update.callback_query.id, '🔁 Request sent');
         await sendMessage(chatId, `🔁 Request new proof for ${invoice}`);
       } else if (data.startsWith('resend:')) {
         const invoice = data.split(':')[1];
         const order = await prisma.orders.findUnique({ where:{ invoice } });
         if(order){
           await prisma.tasks.create({ data:{ order_id: order.id, kind:'RESEND_INVITE' } });
+          await answerCallbackQuery(update.callback_query.id, '🔁 Resend queued');
           await sendMessage(chatId, `🔁 Resend task queued for ${invoice}`);
         } else {
+          await answerCallbackQuery(update.callback_query.id, '❌ Not found');
           await sendMessage(chatId, `❌ Order ${invoice} not found`);
         }
       }
