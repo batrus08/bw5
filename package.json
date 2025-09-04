@@ -8,6 +8,7 @@
     "node": ">=18"
   },
   "scripts": {
+    "prestart": "prisma migrate deploy",
     "start": "node server.js",
     "postinstall": "prisma generate",
     "deploy:migrate": "prisma migrate deploy",
