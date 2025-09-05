@@ -9,9 +9,13 @@ const { addEvent } = require('../services/events');
 const { sendText, sendInteractiveButtons, sendListMenu, sendImageById, sendImageByUrl } = require('../services/wa');
 const { sendMessage, buildOrderKeyboard } = require('../services/telegram');
 const { createOrder, setPayAck } = require('../services/orders');
+const { getStockOptions } = require('../services/stock');
+const { createClaim } = require('../services/claims');
+const { calcLinearRefund } = require('../utils/refund');
 
 const router = express.Router();
 
+const claimState = new Map();
 router.get('/', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
@@ -44,9 +48,30 @@ router.post('/', async (req, res) => {
       if (!ok) { await addEvent(null,'RATE_LIMITED',`wa user ${from}`,{},'SYSTEM','wa'); continue; }
 
       if (m.type === 'text') {
-        const t = (m.text?.body || '').trim().toLowerCase();
-        if (t === 'menu' || t === 'halo' || t === 'hi' || t === 'order') {
-          await sendInteractiveButtons(from, 'Pilih menu:', ['Order', 'Harga', 'FAQ']);
+        const body = (m.text?.body || '').trim();
+        const t = body.toLowerCase();
+        const state = claimState.get(from);
+        if (state?.step === 'CLAIM_INVOICE') {
+          const invoice = body;
+          const order = await prisma.orders.findUnique({ where:{ invoice }, include:{ product:true } });
+          if(!order){ await sendText(from,'Invoice tidak ditemukan.'); claimState.delete(from); continue; }
+          const warrantyDays = (order.product.duration_months||0)*30;
+          const usedDays = Math.floor((Date.now()-order.created_at.getTime())/86400000);
+          const remaining = Math.max(0, warrantyDays-usedDays);
+          const eligible = remaining>0;
+          const refund = eligible ? calcLinearRefund({ priceCents: order.amount_cents, warrantyDays, usedDays }) : 0;
+          const summary = `Produk: ${order.product.name}\nDurasi: ${order.product.duration_months||0} bulan\nStatus: ${order.status}\nGaransi: ${eligible?'Ya':'Tidak'}\nSisa hari: ${remaining}\nEstimasi refund: Rp ${refund/100}`;
+          await sendText(from, summary);
+          await sendInteractiveButtons(from, 'Lanjutkan?', ['Ajukan Klaim','Batal']);
+          claimState.set(from,{ step:'CLAIM_CONFIRM', invoice, eligible });
+        } else if (state?.step === 'CLAIM_REASON') {
+          try {
+            await createClaim(state.invoice, body);
+            await sendText(from, 'Klaim garansi diajukan.');
+          } catch { await sendText(from, 'Gagal mengajukan klaim.'); }
+          claimState.delete(from);
+        } else if (t === 'menu' || t === 'halo' || t === 'hi' || t === 'order') {
+          await sendInteractiveButtons(from, 'Pilih menu:', ['Order', 'Harga', 'FAQ', '🛡️ Klaim Garansi']);
         } else if (t.startsWith('order ')) {
           const parts = t.split(/\s+/);
           const code = parts[1], qty = Number(parts[2]||1), email = parts[3]||null;
@@ -62,6 +87,12 @@ router.post('/', async (req, res) => {
             else if (PAYMENT_QRIS_IMAGE_URL) await sendImageByUrl(from, PAYMENT_QRIS_IMAGE_URL, caption);
             else await sendText(from, caption);
           }
+        } else if (t.startsWith('durasi ')) {
+          const code = t.split(/\s+/)[1];
+          const opts = await getStockOptions(code);
+          const rows = opts.filter(o=>o.stock>0).map(o=>({ id:`dur:${code}:${o.durationDays}`, title:`Durasi ${o.durationDays} hari`, desc:`Stok: ${o.stock}` }));
+          if(rows.length===0) await sendText(from,'Semua durasi habis.');
+          else await sendListMenu(from,'Durasi','Pilih durasi:',[{ title:'Durasi', rows }]);
         } else if (t.startsWith('stok ')) {
           const code = t.split(/\s+/)[1];
           const count = await prisma.accounts.count({ where:{ product_code: code, status:'AVAILABLE' } });
@@ -79,11 +110,32 @@ router.post('/', async (req, res) => {
         await sendMessage(process.env.ADMIN_CHAT_ID, `🧾 Bukti bayar masuk\nInvoice: <b>${order.invoice}</b>\nProduk: ${prod.name} (${prod.code})\nQty: ${order.qty}\nTotal: Rp ${(order.amount_cents)/100}`, { parse_mode:'HTML', ...buildOrderKeyboard(order.invoice, prod.delivery_mode) });
       } else if (m.type === 'interactive') {
         const id = m.interactive?.button_reply?.id || m.interactive?.list_reply?.id || '';
+        const title = m.interactive?.button_reply?.title?.toLowerCase() || '';
+        const state = claimState.get(from);
         if (id.startsWith('b')) {
-          const title = m.interactive?.button_reply?.title?.toLowerCase() || '';
-          if (title === 'order') await sendText(from, 'Format: order <kode> <qty> [email]');
+          if (state?.step === 'CLAIM_CONFIRM') {
+            if (id === 'b1') {
+              if (state.eligible) {
+                await sendText(from, 'Deskripsikan masalah Anda:');
+                claimState.set(from, { step: 'CLAIM_REASON', invoice: state.invoice });
+              } else {
+                await sendText(from, 'Garansi tidak berlaku.');
+                claimState.delete(from);
+              }
+            } else if (id === 'b2') {
+              await sendText(from, 'Dibatalkan.');
+              claimState.delete(from);
+            }
+          } else if (title === 'order') await sendText(from, 'Format: order <kode> <qty> [email]');
           else if (title === 'harga') await sendText(from, 'Harga: ambil dari DB.');
           else if (title === 'faq') await sendText(from, 'Tanya saja, kami bantu.');
+          else if (title.includes('klaim')) {
+            claimState.set(from, { step: 'CLAIM_INVOICE' });
+            await sendText(from, 'Masukkan nomor invoice:');
+          }
+        } else if (id.startsWith('dur:')) {
+          const [, code, days] = id.split(':');
+          await sendText(from, `Durasi ${days} hari dipilih untuk ${code}. Lanjutkan dengan mengetik: order ${code} 1`);
         }
       }
     }
