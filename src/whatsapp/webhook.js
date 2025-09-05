@@ -6,7 +6,10 @@ const { WA_APP_SECRET, WA_VERIFY_TOKEN, RATE_LIMIT_WA_PER_MIN, RATE_LIMIT_PERSIS
 const { allow } = require('../utils/rateLimit');
 const { allowPersistent } = require('../utils/rateLimitDB');
 const { addEvent } = require('../services/events');
-const { sendText, sendInteractiveButtons, sendImageById, sendImageByUrl } = require('../services/wa');
+const { sendInteractiveButtons, sendImageById, sendImageByUrl } = require('../services/wa');
+function withHelpButtons(to, text, primaryLabel='Lanjut'){
+  return sendInteractiveButtons(to, text, [primaryLabel]);
+}
 const { sendMessage, buildOrderKeyboard } = require('../services/telegram');
 const { createOrder, setPayAck, requestHelp } = require('../services/orders');
 const { createClaim, setEwallet } = require('../services/claims');
@@ -47,7 +50,7 @@ router.post('/', async (req, res) => {
       if (!ok) { await addEvent(null,'RATE_LIMITED',`wa user ${from}`,{},'SYSTEM','wa'); continue; }
       const last = await prisma.orders.findFirst({ where:{ buyer_phone: from }, orderBy:{ created_at:'desc' } }).catch(()=>null);
       if(last?.status==='ON_HOLD_HELP'){
-        await sendText(from,'Proses masih dijeda oleh admin.');
+        await withHelpButtons(from,'Proses masih dijeda oleh admin.');
         continue;
       }
 
@@ -58,34 +61,34 @@ router.post('/', async (req, res) => {
         if (state?.step === 'CLAIM_INVOICE') {
           const invoice = body;
           const order = await prisma.orders.findUnique({ where:{ invoice }, include:{ product:true } });
-          if(!order){ await sendText(from,'Invoice tidak ditemukan.'); claimState.delete(from); continue; }
+          if(!order){ await withHelpButtons(from,'Invoice tidak ditemukan.'); claimState.delete(from); continue; }
           const warrantyDays = (order.product.duration_months||0)*30;
           const usedDays = Math.floor((Date.now()-order.created_at.getTime())/86400000);
           const remaining = Math.max(0, warrantyDays-usedDays);
           const eligible = remaining>0;
           const refund = eligible ? calcLinearRefund({ priceCents: order.amount_cents, warrantyDays, usedDays }) : 0;
           const summary = `Produk: ${order.product.name}\nDurasi: ${order.product.duration_months||0} bulan\nStatus: ${order.status}\nGaransi: ${eligible?'Ya':'Tidak'}\nSisa hari: ${remaining}\nEstimasi refund: Rp ${refund/100}`;
-          await sendText(from, summary);
+          await withHelpButtons(from, summary);
           await sendInteractiveButtons(from, 'Lanjutkan?', ['Ajukan Klaim','Batal']);
           claimState.set(from,{ step:'CLAIM_CONFIRM', invoice, eligible });
         } else if (state?.step === 'CLAIM_REASON') {
           try {
             await createClaim(state.invoice, body);
-            await sendText(from, 'Klaim garansi diajukan.');
-          } catch { await sendText(from, 'Gagal mengajukan klaim.'); }
+            await withHelpButtons(from, 'Klaim garansi diajukan.');
+          } catch { await withHelpButtons(from, 'Gagal mengajukan klaim.'); }
           claimState.delete(from);
         } else if (state?.step === 'CLAIM_WAIT_EWALLET') {
           const { normalized, isValid } = normalizeEwallet(body);
           if (isValid) {
             try {
               await setEwallet(state.claimId, normalized);
-              await sendText(from, `Nomor ShopeePay diterima: ${normalized}. Refund diproses maksimal 2×24 jam.`);
+              await withHelpButtons(from, `Nomor ShopeePay diterima: ${normalized}. Refund diproses maksimal 2×24 jam.`);
               claimState.delete(from);
             } catch {
-              await sendText(from, 'Gagal menyimpan nomor. Coba lagi.');
+              await withHelpButtons(from, 'Gagal menyimpan nomor. Coba lagi.');
             }
           } else {
-            await sendText(from, 'Format ShopeePay tidak valid. Kirim nomor 10–15 digit diawali 08 (contoh 081234567890).');
+            await withHelpButtons(from, 'Format ShopeePay tidak valid. Kirim nomor 10–15 digit diawali 08 (contoh 081234567890).');
           }
         } else if (t === 'menu' || t === 'halo' || t === 'hi' || t === 'order') {
           await sendInteractiveButtons(from, 'Pilih menu:', ['Order', 'Harga', 'FAQ', '🛡️ Klaim Garansi']);
@@ -93,36 +96,39 @@ router.post('/', async (req, res) => {
           const parts = t.split(/\s+/);
           const code = parts[1], qty = Number(parts[2]||1), email = parts[3]||null;
           const product = await prisma.products.findUnique({ where:{ code } });
-          if (!product || !product.is_active) { await sendText(from, 'Produk tidak tersedia.'); continue; }
+          if (!product || !product.is_active) { await withHelpButtons(from, 'Produk tidak tersedia.'); continue; }
           const order = await createOrder({ buyer_phone: from, product_code: code, qty, amount_cents: product.price_cents * qty, email });
           if(order.status === 'AWAITING_PREAPPROVAL'){
-            await sendInteractiveButtons(from, 'Order diterima dan menunggu persetujuan admin.', ['Lanjut']);
+            await withHelpButtons(from, 'Order diterima dan menunggu persetujuan admin.');
+          } else if(product.sk_text && !order.tnc_ack_at){
+            orderState.set(from, { step:'TNC_ACK', order, product });
+            await withHelpButtons(from, product.sk_text, 'Setuju');
           } else {
             const deadlineAt = new Date(order.created_at.getTime() + PAYMENT_DEADLINE_MIN*60*1000);
             const caption = `${PAYMENT_QRIS_TEXT}\nInvoice: ${order.invoice}\nTotal: Rp ${(product.price_cents*qty)/100}\nDeadline: ${deadlineAt.toLocaleTimeString()}\nKirim foto bukti bayar ke sini.`;
             if (PAYMENT_QRIS_MEDIA_ID){
               await sendImageById(from, PAYMENT_QRIS_MEDIA_ID, caption);
-              await sendInteractiveButtons(from, 'Jika sudah bayar kirim bukti.', ['Lanjut']);
+              await withHelpButtons(from, 'Jika sudah bayar kirim bukti.');
             } else if (PAYMENT_QRIS_IMAGE_URL){
               await sendImageByUrl(from, PAYMENT_QRIS_IMAGE_URL, caption);
-              await sendInteractiveButtons(from, 'Jika sudah bayar kirim bukti.', ['Lanjut']);
+              await withHelpButtons(from, 'Jika sudah bayar kirim bukti.');
             } else {
-              await sendInteractiveButtons(from, caption, ['Lanjut']);
+              await withHelpButtons(from, caption);
             }
           }
         } else if (t.startsWith('stok ')) {
           const code = t.split(/\s+/)[1];
           const count = await prisma.accounts.count({ where:{ product_code: code, status:'AVAILABLE' } });
-          await sendText(from, `Stok ${code}: ${count}`);
+          await withHelpButtons(from, `Stok ${code}: ${count}`);
         } else {
-          await sendInteractiveButtons(from, 'Ketik: menu | order <kode> <qty> [email] | stok <kode>', ['Lanjut']);
+          await withHelpButtons(from, 'Ketik: menu | order <kode> <qty> [email] | stok <kode>');
         }
       } else if (m.type === 'image') {
         const order = await prisma.orders.findFirst({ where:{ buyer_phone: from, status:'PENDING_PAYMENT' }, orderBy:{ created_at:'desc' } });
-        if (!order) { await sendText(from, 'Tidak ada order menunggu pembayaran.'); continue; }
+        if (!order) { await withHelpButtons(from, 'Tidak ada order menunggu pembayaran.'); continue; }
         await prisma.orders.update({ where:{ id: order.id }, data:{ proof_id: m.image?.id || 'unknown', proof_mime: m.image?.mime_type || '' } });
         await setPayAck(order.invoice);
-        await sendInteractiveButtons(from, 'Terima kasih! Bukti pembayaran diterima dan sedang diverifikasi admin.', ['Lanjut']);
+        await withHelpButtons(from, 'Terima kasih! Bukti pembayaran diterima dan sedang diverifikasi admin.');
         const prod = await prisma.products.findUnique({ where:{ code: order.product_code } });
         await sendMessage(process.env.ADMIN_CHAT_ID, `🧾 Bukti bayar masuk\nInvoice: <b>${order.invoice}</b>\nProduk: ${prod.name} (${prod.code})\nQty: ${order.qty}\nTotal: Rp ${(order.amount_cents)/100}`, { parse_mode:'HTML', ...buildOrderKeyboard(order.invoice, prod.delivery_mode) });
       } else if (m.type === 'interactive') {
@@ -131,58 +137,79 @@ router.post('/', async (req, res) => {
         if(id === 'help'){
           const order = await prisma.orders.findFirst({ where:{ buyer_phone: from }, orderBy:{ created_at:'desc' } });
           if(order){ await requestHelp(order.id, { stage: 'UNKNOWN' }); }
-          await sendInteractiveButtons(from, 'Permintaan bantuan diterima. Proses dijeda oleh admin.', ['Lanjut']);
+          await withHelpButtons(from, 'Permintaan bantuan diterima. Proses dijeda oleh admin.');
           continue;
         }
         const claim = claimState.get(from);
         const orderSel = orderState.get(from);
+        if(orderSel?.step === 'TNC_ACK' && id.startsWith('b')){
+          if(id === 'b1'){
+            await prisma.orders.update({ where:{ id: orderSel.order.id }, data:{ tnc_ack_at: new Date() } });
+            await addEvent(orderSel.order.id, 'TNC_CONFIRMED', 'terms accepted');
+            const order = orderSel.order;
+            const product = orderSel.product;
+            const deadlineAt = new Date(order.created_at.getTime() + PAYMENT_DEADLINE_MIN*60*1000);
+            const caption = `${PAYMENT_QRIS_TEXT}\nInvoice: ${order.invoice}\nTotal: Rp ${(product.price_cents*order.qty)/100}\nDeadline: ${deadlineAt.toLocaleTimeString()}\nKirim foto bukti bayar ke sini.`;
+            if (PAYMENT_QRIS_MEDIA_ID){
+              await sendImageById(from, PAYMENT_QRIS_MEDIA_ID, caption);
+              await withHelpButtons(from, 'Jika sudah bayar kirim bukti.');
+            } else if (PAYMENT_QRIS_IMAGE_URL){
+              await sendImageByUrl(from, PAYMENT_QRIS_IMAGE_URL, caption);
+              await withHelpButtons(from, 'Jika sudah bayar kirim bukti.');
+            } else {
+              await withHelpButtons(from, caption);
+            }
+          }
+          orderState.delete(from);
+          continue;
+        }
         if (id.startsWith('b')) {
           if (claim?.step === 'CLAIM_CONFIRM') {
             if (id === 'b1') {
               if (claim.eligible) {
-                await sendInteractiveButtons(from, 'Deskripsikan masalah Anda:', ['Lanjut']);
+                await withHelpButtons(from, 'Deskripsikan masalah Anda:');
                 claimState.set(from, { step: 'CLAIM_REASON', invoice: claim.invoice });
               } else {
-                await sendText(from, 'Garansi tidak berlaku.');
+                await withHelpButtons(from, 'Garansi tidak berlaku.');
                 claimState.delete(from);
               }
             } else if (id === 'b2') {
-              await sendInteractiveButtons(from, 'Dibatalkan.', ['Lanjut']);
+              await withHelpButtons(from, 'Dibatalkan.');
               claimState.delete(from);
             }
           } else if (orderSel && title === 'beli 1') {
             orderState.delete(from);
             const product = await prisma.products.findUnique({ where: { code: orderSel.code } });
             if (!product || !product.is_active) {
-            await sendText(from, 'Produk tidak tersedia.');
+            await withHelpButtons(from, 'Produk tidak tersedia.');
             } else {
               const order = await createOrder({ buyer_phone: from, product_code: orderSel.code, qty: 1, amount_cents: product.price_cents });
               if (order.status === 'AWAITING_PREAPPROVAL') {
-                await sendInteractiveButtons(from, 'Order diterima dan menunggu persetujuan admin.', ['Lanjut']);
+                await withHelpButtons(from, 'Order diterima dan menunggu persetujuan admin.');
               } else {
                 const deadlineAt = new Date(order.created_at.getTime() + PAYMENT_DEADLINE_MIN * 60 * 1000);
                 const caption = `${PAYMENT_QRIS_TEXT}\nInvoice: ${order.invoice}\nTotal: Rp ${(product.price_cents)/100}\nDeadline: ${deadlineAt.toLocaleTimeString()}\nKirim foto bukti bayar ke sini.`;
                 if (PAYMENT_QRIS_MEDIA_ID){
                   await sendImageById(from, PAYMENT_QRIS_MEDIA_ID, caption);
-                  await sendInteractiveButtons(from, 'Jika sudah bayar kirim bukti.', ['Lanjut']);
+                  await withHelpButtons(from, 'Jika sudah bayar kirim bukti.');
                 }
                 else if (PAYMENT_QRIS_IMAGE_URL){
                   await sendImageByUrl(from, PAYMENT_QRIS_IMAGE_URL, caption);
-                  await sendInteractiveButtons(from, 'Jika sudah bayar kirim bukti.', ['Lanjut']);
+                  await withHelpButtons(from, 'Jika sudah bayar kirim bukti.');
                 } else {
-                  await sendInteractiveButtons(from, caption, ['Lanjut']);
+                  await withHelpButtons(from, caption);
                 }
               }
             }
           } else if (orderSel && title === 'batal') {
             orderState.delete(from);
-            await sendInteractiveButtons(from, 'Dibatalkan.', ['Lanjut']);
-          } else if (title === 'order') await sendInteractiveButtons(from, 'Format: order <kode> <qty> [email]', ['Lanjut']);
-          else if (title === 'harga') await sendInteractiveButtons(from, 'Harga: ambil dari DB.', ['Lanjut']);
-          else if (title === 'faq') await sendInteractiveButtons(from, 'Tanya saja, kami bantu.', ['Lanjut']);
+            await withHelpButtons(from, 'Dibatalkan.');
+          } else if (title === 'order') await withHelpButtons(from, 'Format: order <kode> <qty> [email]');
+          else if (title === 'harga') await withHelpButtons(from, 'Harga: ambil dari DB.');
+          else if (title === 'faq') await withHelpButtons(from, 'Tanya saja, kami bantu.');
           else if (title.includes('klaim')) {
             claimState.set(from, { step: 'CLAIM_INVOICE' });
-            await sendInteractiveButtons(from, 'Masukkan nomor invoice:', ['Lanjut']);
+            await withHelpButtons(from, 'Masukkan nomor invoice:');
           }
         }
       }

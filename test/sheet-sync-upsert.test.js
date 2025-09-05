@@ -52,3 +52,12 @@ test('no downgrade status on update', async () => {
   await upsertAccountFromSheet(Object.assign({}, payload, { username:'u3' }));
   assert.strictEqual(store.accounts[0].status, 'RESERVED');
 });
+
+test('fifo_order stable unless reorder true', async () => {
+  await upsertAccountFromSheet(payload);
+  const firstFifo = store.accounts[0].fifo_order;
+  await upsertAccountFromSheet(Object.assign({}, payload, { password:'p2' }));
+  assert.strictEqual(store.accounts[0].fifo_order, firstFifo);
+  await upsertAccountFromSheet(Object.assign({}, payload, { password:'p3', reorder:true }));
+  assert.notStrictEqual(store.accounts[0].fifo_order, firstFifo);
+});
