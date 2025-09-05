@@ -24,6 +24,7 @@ enum OrderStatus {
   REFUND_APPROVED
   REFUND_REJECTED
   AWAITING_PREAPPROVAL
+  ON_HOLD_HELP
 }
 
 enum DeliveryMode {
@@ -61,6 +62,9 @@ enum EventKind {
   SHEET_SYNC_FAIL
   RATE_LIMITED
   DEAD_LETTER_STORED
+  HELP_REQUESTED
+  HELP_RESUMED
+  HELP_CANCELLED
 }
 
 enum Actor {
@@ -113,12 +117,13 @@ model products {
   daily_limit     Int?
   sk_text         String?
 
-  accounts accounts[]
-  orders   orders[]
+  accounts   accounts[]
+  orders     orders[]
   subconfigs subproductconfigs[]
 
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  created_at  DateTime      @default(now())
+  updated_at  DateTime      @updatedAt
+  stockalerts stockalerts[]
 }
 
 model accounts {
@@ -149,10 +154,10 @@ model accounts {
 }
 
 model subproductconfigs {
-  id                   Int      @id @default(autoincrement())
-  product_code         String
-  sub_code             String
-  approval_required    Boolean  @default(false)
+  id                     Int     @id @default(autoincrement())
+  product_code           String
+  sub_code               String
+  approval_required      Boolean @default(false)
   approval_notes_default String?
 
   product products @relation(fields: [product_code], references: [code], onUpdate: Cascade, onDelete: Cascade)
@@ -174,19 +179,22 @@ model orders {
   email           String?
   account_id      Int?
   pay_ack_at      DateTime?
+  fulfilled_at    DateTime?
+  expires_at      DateTime?
   proof_id        String?
   proof_mime      String?
   synced_to_sheet Boolean     @default(false)
   sub_code        String      @default("default")
 
-  product products  @relation(fields: [product_code], references: [code], onUpdate: Cascade, onDelete: Restrict)
-  account accounts? @relation("OrderAccount", fields: [account_id], references: [id], onUpdate: Cascade, onDelete: SetNull)
-  events  events[]
-  tasks   tasks[]
+  product     products             @relation(fields: [product_code], references: [code], onUpdate: Cascade, onDelete: Restrict)
+  account     accounts?            @relation("OrderAccount", fields: [account_id], references: [id], onUpdate: Cascade, onDelete: SetNull)
+  events      events[]
+  tasks       tasks[]
   preapproval preapprovalrequests?
 
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  created_at     DateTime        @default(now())
+  updated_at     DateTime        @updatedAt
+  warrantyclaims warrantyclaims?
 
   @@index([status])
   @@index([product_code, created_at])
@@ -194,11 +202,11 @@ model orders {
 }
 
 model preapprovalrequests {
-  id        Int              @id @default(autoincrement())
-  order_id  BigInt           @unique
-  status    PreapprovalStatus @default(PENDING)
-  notes     String?
-  sub_code  String?
+  id       Int               @id @default(autoincrement())
+  order_id BigInt            @unique
+  status   PreapprovalStatus @default(PENDING)
+  notes    String?
+  sub_code String?
 
   order orders @relation(fields: [order_id], references: [id], onUpdate: Cascade, onDelete: Cascade)
 
@@ -207,25 +215,25 @@ model preapprovalrequests {
 }
 
 model warrantyclaims {
-  id          BigInt     @id @default(autoincrement())
-  order_id    BigInt     @unique
-  status      ClaimStatus @default(PENDING)
-  reason      String?
+  id           BigInt      @id @default(autoincrement())
+  order_id     BigInt      @unique
+  status       ClaimStatus @default(PENDING)
+  reason       String?
   refund_cents Int?
-  ewallet     String?
-  created_at  DateTime   @default(now())
-  updated_at  DateTime   @updatedAt
+  ewallet      String?
+  created_at   DateTime    @default(now())
+  updated_at   DateTime    @updatedAt
 
   order orders @relation(fields: [order_id], references: [id], onUpdate: Cascade, onDelete: Cascade)
 }
 
 model stockalerts {
-  id             String   @id @default(cuid())
-  product_code   String
-  sub_code       String
-  last_status    String
+  id               String    @id @default(cuid())
+  product_code     String
+  sub_code         String
+  last_status      String
   last_notified_at DateTime?
-  product products @relation(fields: [product_code], references: [code], onUpdate: Cascade, onDelete: Cascade)
+  product          products  @relation(fields: [product_code], references: [code], onUpdate: Cascade, onDelete: Cascade)
 
   @@unique([product_code, sub_code])
 }

@@ -116,4 +116,10 @@ async function markInvited(invoice){
   return { ok:true };
 }
 
-module.exports = { createOrder, setPayAck, confirmPaid, rejectOrder, markInvited, approvePreapproval, rejectPreapproval, reserveAccount };
+async function requestHelp(orderId){
+  const o = await prisma.orders.update({ where:{ id: orderId }, data:{ status:'ON_HOLD_HELP' } });
+  await addEvent(o.id, 'HELP_REQUESTED', 'Customer requested help');
+  return o;
+}
+
+module.exports = { createOrder, setPayAck, confirmPaid, rejectOrder, markInvited, approvePreapproval, rejectPreapproval, reserveAccount, requestHelp };
