@@ -38,58 +38,28 @@ async function syncAccountsFromCSV(){
     for(const r of rows){
       const data = {
         product_code: r.product_code,
-        username: r.username,
-        password_enc: r.password || '',
-        otp_secret_enc: r.otp_secret || null,
-        max_uses: Number(r.max_uses||1),
-        current_uses: Number(r.current_uses||0),
+        account_group_id: r.account_group_id || null,
+        profile_index: r.profile_index ? Number(r.profile_index) : null,
+        profile_name: r.profile_name || null,
+        username: r.username || null,
+        password: r.password || null,
+        invite_channel: r.invite_channel || null,
         status: (r.status==='DISABLED'?'DISABLED':(r.status==='RESERVED'?'RESERVED':'AVAILABLE')),
+        notes: r.notes || null,
       };
-      await prisma.accounts.upsert({
-        where:{ product_code_username: { product_code: data.product_code, username: data.username } },
-        update: data,
-        create: data
-      });
+      await prisma.accounts.create({ data });
       upserts++;
     }
-    // also sync subproduct configs for approval settings
-    const subUpserts = await upsertSubproductConfigs(rows.map(r=>({
-      product_code: r.product_code,
-      variant: r.variant,
-      duration_days: r.duration_days,
-      approval_required: r.approval_required,
-      approval_notes_default: r.approval_notes_default,
-    })));
-    await prisma.events.create({ data:{ kind:'SHEET_SYNC_OK', actor:'SYSTEM', source:'sheet', meta:{ upserts, subUpserts } } });
-    return { ok:true, upserts, subUpserts };
+    await prisma.events.create({ data:{ kind:'SHEET_SYNC_OK', actor:'SYSTEM', source:'sheet', meta:{ upserts } } });
+    return { ok:true, upserts };
   }catch(e){
     await prisma.events.create({ data:{ kind:'SHEET_SYNC_FAIL', actor:'SYSTEM', source:'sheet', meta:{ error:e.message } } });
     await notifyCritical(`Sheet sync FAIL: <code>${e.message}</code>`);
     return { ok:false, error:e.message };
   }
 }
-
-async function upsertSubproductConfigs(rows = []) {
-  let upserts = 0;
-  for (const r of rows) {
-    const data = {
-      product_code: r.product_code,
-      sub_code: [r.variant || '', r.duration_days || ''].filter(Boolean).join('-') || 'default',
-      approval_required: parseApprovalRequired(r.approval_required),
-      approval_notes_default: r.approval_notes_default || null,
-    };
-    await prisma.subproductconfigs.upsert({
-      where: { product_code_sub_code: { product_code: data.product_code, sub_code: data.sub_code } },
-      update: data,
-      create: data,
-    });
-    upserts++;
-  }
-  return upserts;
-}
-
 async function appendWarrantyLog(row) {
   await emitToN8N('/warranty-log', row);
 }
 
-module.exports = { syncAccountsFromCSV, parseApprovalRequired, upsertSubproductConfigs, appendWarrantyLog };
+module.exports = { syncAccountsFromCSV, parseApprovalRequired, appendWarrantyLog };

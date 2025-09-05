@@ -1,6 +1,8 @@
 
 const prisma = require('../db/client');
 const { WA_ACCESS_TOKEN, WA_PHONE_NUMBER_ID, WA_API_BASE } = require('../config/env');
+
+const HELP_BUTTON = { type: 'reply', title: '🆘 Bantuan', id: 'help' };
 function endpoint(path){ return `${WA_API_BASE}/${WA_PHONE_NUMBER_ID}/${path}`; }
 
 async function waCall(path, body){
@@ -23,7 +25,10 @@ async function waCall(path, body){
 }
 
 function sendText(to, text){ return waCall('messages', { messaging_product:'whatsapp', to, type:'text', text:{ body:text } }); }
-function sendInteractiveButtons(to, bodyText, buttons){ return waCall('messages', { messaging_product:'whatsapp', to, type:'interactive', interactive:{ type:'button', body:{ text: bodyText }, action:{ buttons: buttons.slice(0,3).map((t,i)=>({ type:'reply', reply:{ id:`b${i+1}`, title:t } })) } } }); }
+function sendInteractiveButtons(to, bodyText, buttons){
+  const combined = [...buttons.map((t,i)=>({ type:'reply', reply:{ id:`b${i+1}`, title:t } })), HELP_BUTTON];
+  return waCall('messages', { messaging_product:'whatsapp', to, type:'interactive', interactive:{ type:'button', body:{ text: bodyText }, action:{ buttons: combined.slice(0,3) } } });
+}
 function sendListMenu(to, header, bodyText, sections){ return waCall('messages', { messaging_product:'whatsapp', to, type:'interactive', interactive:{ type:'list', header:{ type:'text', text: header }, body:{ text: bodyText }, action:{ button:'Pilih', sections: sections.map(s=>({ title:s.title, rows: s.rows.map(r=>({ id:r.id, title:r.title, description:r.desc||'' })) })) } } }); }
 function sendImageById(to, mediaId, caption){ return waCall('messages', { messaging_product:'whatsapp', to, type:'image', image:{ id: mediaId, caption } }); }
 function sendImageByUrl(to, url, caption){ return waCall('messages', { messaging_product:'whatsapp', to, type:'image', image:{ link: url, caption } }); }

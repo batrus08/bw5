@@ -119,7 +119,6 @@ model products {
 
   accounts   accounts[]
   orders     orders[]
-  subconfigs subproductconfigs[]
 
   created_at  DateTime      @default(now())
   updated_at  DateTime      @updatedAt
@@ -129,18 +128,15 @@ model products {
 model accounts {
   id               Int           @id @default(autoincrement())
   product_code     String
-  username         String
-  password_enc     String
-  otp_secret_enc   String?
-  otp_seed         String?
-  invite_api       String?
-  variant_type     String?
-  variant_duration Int?
-  price_override   Int?
-  tnc              String?
+  account_group_id String?
+  profile_index    Int?
+  profile_name     String?
+  username         String?
+  password         String?
+  invite_channel   String?
   status           AccountStatus @default(AVAILABLE)
-  max_uses         Int           @default(1)
-  current_uses     Int           @default(0)
+  tnc_blob         String?
+  notes            String?
 
   product products @relation(fields: [product_code], references: [code], onUpdate: Cascade, onDelete: Restrict)
   orders  orders[] @relation("OrderAccount")
@@ -148,24 +144,7 @@ model accounts {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  @@unique([product_code, username], name: "product_code_username")
-  @@index([status])
-  @@index([product_code])
-}
-
-model subproductconfigs {
-  id                     Int     @id @default(autoincrement())
-  product_code           String
-  sub_code               String
-  approval_required      Boolean @default(false)
-  approval_notes_default String?
-
-  product products @relation(fields: [product_code], references: [code], onUpdate: Cascade, onDelete: Cascade)
-
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-
-  @@unique([product_code, sub_code])
+  @@index([product_code, status])
 }
 
 model orders {
@@ -184,7 +163,7 @@ model orders {
   proof_id        String?
   proof_mime      String?
   synced_to_sheet Boolean     @default(false)
-  sub_code        String      @default("default")
+  metadata        Json?
 
   product     products             @relation(fields: [product_code], references: [code], onUpdate: Cascade, onDelete: Restrict)
   account     accounts?            @relation("OrderAccount", fields: [account_id], references: [id], onUpdate: Cascade, onDelete: SetNull)
@@ -206,7 +185,6 @@ model preapprovalrequests {
   order_id BigInt            @unique
   status   PreapprovalStatus @default(PENDING)
   notes    String?
-  sub_code String?
 
   order orders @relation(fields: [order_id], references: [id], onUpdate: Cascade, onDelete: Cascade)
 
@@ -230,12 +208,11 @@ model warrantyclaims {
 model stockalerts {
   id               String    @id @default(cuid())
   product_code     String
-  sub_code         String
   last_status      String
   last_notified_at DateTime?
   product          products  @relation(fields: [product_code], references: [code], onUpdate: Cascade, onDelete: Cascade)
 
-  @@unique([product_code, sub_code])
+  @@unique([product_code])
 }
 
 model events {

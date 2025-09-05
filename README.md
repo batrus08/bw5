@@ -116,11 +116,10 @@ Contoh skema `stockalerts` terbaru:
 model stockalerts {
   id             String   @id @default(cuid())
   product_code   String
-  sub_code       String
   last_status    String
   last_notified_at DateTime?
 
-  @@unique([product_code, sub_code])
+  @@unique([product_code])
 }
 ```
 

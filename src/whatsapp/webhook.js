@@ -6,10 +6,9 @@ const { WA_APP_SECRET, WA_VERIFY_TOKEN, RATE_LIMIT_WA_PER_MIN, RATE_LIMIT_PERSIS
 const { allow } = require('../utils/rateLimit');
 const { allowPersistent } = require('../utils/rateLimitDB');
 const { addEvent } = require('../services/events');
-const { sendText, sendInteractiveButtons, sendListMenu, sendImageById, sendImageByUrl } = require('../services/wa');
+const { sendText, sendInteractiveButtons, sendImageById, sendImageByUrl } = require('../services/wa');
 const { sendMessage, buildOrderKeyboard } = require('../services/telegram');
-const { createOrder, setPayAck } = require('../services/orders');
-const { getStockOptions } = require('../services/stock');
+const { createOrder, setPayAck, requestHelp } = require('../services/orders');
 const { createClaim, setEwallet } = require('../services/claims');
 const { normalizeEwallet } = require('../utils/validation');
 const { calcLinearRefund } = require('../utils/refund');
@@ -100,12 +99,6 @@ router.post('/', async (req, res) => {
             else if (PAYMENT_QRIS_IMAGE_URL) await sendImageByUrl(from, PAYMENT_QRIS_IMAGE_URL, caption);
             else await sendText(from, caption);
           }
-        } else if (t.startsWith('durasi ')) {
-          const code = t.split(/\s+/)[1];
-          const opts = await getStockOptions(code);
-          const rows = opts.filter(o=>o.stock>0).map(o=>({ id:`dur:${code}:${o.durationDays}`, title:`Durasi ${o.durationDays} hari`, desc:`Stok: ${o.stock}` }));
-          if(rows.length===0) await sendText(from,'Semua durasi habis.');
-          else await sendListMenu(from,'Durasi','Pilih durasi:',[{ title:'Durasi', rows }]);
         } else if (t.startsWith('stok ')) {
           const code = t.split(/\s+/)[1];
           const count = await prisma.accounts.count({ where:{ product_code: code, status:'AVAILABLE' } });
@@ -124,6 +117,12 @@ router.post('/', async (req, res) => {
       } else if (m.type === 'interactive') {
         const id = m.interactive?.button_reply?.id || m.interactive?.list_reply?.id || '';
         const title = m.interactive?.button_reply?.title?.toLowerCase() || '';
+        if(id === 'help'){
+          const order = await prisma.orders.findFirst({ where:{ buyer_phone: from }, orderBy:{ created_at:'desc' } });
+          if(order){ await requestHelp(order.id, { stage: 'UNKNOWN' }); }
+          await sendText(from, 'Permintaan bantuan diterima. Proses dijeda oleh admin.');
+          continue;
+        }
         const claim = claimState.get(from);
         const orderSel = orderState.get(from);
         if (id.startsWith('b')) {
@@ -146,7 +145,7 @@ router.post('/', async (req, res) => {
             if (!product || !product.is_active) {
               await sendText(from, 'Produk tidak tersedia.');
             } else {
-              const order = await createOrder({ buyer_phone: from, product_code: orderSel.code, qty: 1, amount_cents: product.price_cents, sub_code: orderSel.sub_code });
+              const order = await createOrder({ buyer_phone: from, product_code: orderSel.code, qty: 1, amount_cents: product.price_cents });
               if (order.status === 'AWAITING_PREAPPROVAL') {
                 await sendText(from, 'Order diterima dan menunggu persetujuan admin.');
               } else {
@@ -167,10 +166,6 @@ router.post('/', async (req, res) => {
             claimState.set(from, { step: 'CLAIM_INVOICE' });
             await sendText(from, 'Masukkan nomor invoice:');
           }
-        } else if (id.startsWith('dur:')) {
-          const [, code, days] = id.split(':');
-          orderState.set(from, { code, sub_code: `${code}:${days}` });
-          await sendInteractiveButtons(from, `Durasi ${days} hari dipilih untuk ${code}.`, ['Beli 1', 'Batal']);
         }
       }
     }
