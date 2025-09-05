@@ -50,9 +50,10 @@ test('claim approval asks for ewallet and stores number', async () => {
   await send('/claims/1/request-ewallet', {});
   assert.strictEqual(messages.length,1);
   assert.ok(claimState.has('1'));
-  await send('/', { entry:[{ changes:[{ value:{ messages:[{ from:'1', type:'text', text:{ body:'0812345678' } }] } }] }] });
+  await send('/', { entry:[{ changes:[{ value:{ messages:[{ from:'1', type:'text', text:{ body:' 08-123 456 789 0 ' } }] } }] }] });
   assert.strictEqual(ewalletCalls.length,1);
-  assert.strictEqual(ewalletCalls[0].ew,'0812345678');
+  assert.strictEqual(ewalletCalls[0].ew,'081234567890');
   assert.strictEqual(messages.length,2);
+  assert.strictEqual(messages[1][1],'Nomor ShopeePay diterima: 081234567890. Refund diproses maksimal 2×24 jam.');
   await new Promise(r=>server.close(r));
 });

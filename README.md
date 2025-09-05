@@ -72,6 +72,18 @@ Flow baru:
 - WA: klaim garansi → setelah admin approve, bot meminta nomor ShopeePay dan menunggu input.
 - Admin: pre-approval bisa diaktifkan per sub-produk (contoh `PROD:30`).
 
+### Normalisasi ShopeePay
+
+- Nomor ShopeePay dinormalisasi sebelum disimpan: spasi/dash dihapus, hanya 10–15 digit dan harus diawali `08`.
+- Contoh: input `" 08-123 456 789 0 "` → disimpan dan ditampilkan kembali sebagai `081234567890`.
+- Jika format salah, bot membalas: `Format ShopeePay tidak valid. Kirim nomor 10–15 digit diawali 08 (contoh 081234567890).`
+ - Contoh balasan sukses: `Nomor ShopeePay diterima: 081234567890. Refund diproses maksimal 2×24 jam.`
+
+### Idempotensi Ekstra
+
+- Endpoint pre-approval (`approve`/`reject`) dan klaim (`approve`/`reject`/`ewallet`/`refunded`) aman dari double-tap.
+- Jika status sudah final, panggilan ulang mengembalikan `200` dengan `{ idempotent: true }` tanpa efek samping.
+
 ## Integrasi n8n
 Backend dapat mengirim setiap event order ke workflow n8n sehingga otomatisasi bisa dilakukan tanpa mengubah kode.
 
