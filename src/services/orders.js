@@ -116,10 +116,50 @@ async function markInvited(invoice){
   return { ok:true };
 }
 
+// Store previous status when customer asks for help so admin can resume later
 async function requestHelp(orderId){
-  const o = await prisma.orders.update({ where:{ id: orderId }, data:{ status:'ON_HOLD_HELP' } });
-  await addEvent(o.id, 'HELP_REQUESTED', 'Customer requested help');
-  return o;
+  let prevStatus;
+  // best effort: try to fetch existing status, ignore if method unavailable
+  if (prisma.orders.findUnique) {
+    const existing = await prisma.orders.findUnique({ where: { id: orderId } }).catch(() => null);
+    prevStatus = existing?.status;
+  }
+  const updated = await prisma.orders.update({ where: { id: orderId }, data: { status: 'ON_HOLD_HELP' } });
+  const meta = prevStatus ? { prev_status: prevStatus } : undefined;
+  await addEvent(updated.id, 'HELP_REQUESTED', 'Customer requested help', meta);
+  return updated;
 }
 
-module.exports = { createOrder, setPayAck, confirmPaid, rejectOrder, markInvited, approvePreapproval, rejectPreapproval, reserveAccount, requestHelp };
+// Resume order processing by reverting to the previous status stored in the last
+// HELP_REQUESTED event metadata.
+async function resume(orderId){
+  let prev;
+  if (prisma.events?.findFirst) {
+    const evt = await prisma.events.findFirst({
+      where: { order_id: orderId, kind: 'HELP_REQUESTED' },
+      orderBy: { id: 'desc' },
+    }).catch(() => null);
+    prev = evt?.meta?.prev_status;
+  }
+  prev = prev || 'PENDING_PAYMENT';
+  const upd = await prisma.orders.update({ where: { id: orderId }, data: { status: prev } });
+  await addEvent(orderId, 'HELP_RESUMED', 'Help session resumed', { prev_status: prev });
+  return upd;
+}
+
+// Skip current stage and move order to a specific status. Used when admin wants
+// to progress the order while in help mode.
+async function skipStage(orderId, nextStatus){
+  const upd = await prisma.orders.update({ where: { id: orderId }, data: { status: nextStatus } });
+  await addEvent(orderId, 'HELP_RESUMED', 'Stage skipped', { skipped: true, next_status: nextStatus });
+  return upd;
+}
+
+// Cancel order during help interaction.
+async function cancel(orderId){
+  const upd = await prisma.orders.update({ where: { id: orderId }, data: { status: 'REJECTED' } });
+  await addEvent(orderId, 'HELP_CANCELLED', 'Order cancelled during help');
+  return upd;
+}
+
+module.exports = { createOrder, setPayAck, confirmPaid, rejectOrder, markInvited, approvePreapproval, rejectPreapproval, reserveAccount, requestHelp, resume, skipStage, cancel };
