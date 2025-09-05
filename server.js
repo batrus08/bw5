@@ -4,6 +4,7 @@ const compression = require('compression');
 const helmet = require('helmet');
 const health = require('./src/routes/health');
 const status = require('./src/routes/status');
+const stock = require('./src/routes/stock');
 const telegramWebhook = require('./src/telegram/webhook');
 const waWebhook = require('./src/whatsapp/webhook');
 const { startWorkers } = require('./src/services/worker');
@@ -41,6 +42,7 @@ app.use((req, res, next) => {
 
 app.use('/healthz', health);
 app.use('/status', status);
+app.use('/stock', stock);
 
 const tgPath = process.env.WEBHOOK_SECRET_PATH ? `/webhook/telegram/${process.env.WEBHOOK_SECRET_PATH}` : '/webhook/telegram';
 app.use(tgPath, telegramWebhook);
