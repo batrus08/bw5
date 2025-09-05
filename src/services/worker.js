@@ -101,19 +101,28 @@ function detectTransition(prev, current){
 async function stockTransitions(){
   const products = await prisma.products.findMany({ where:{ is_active:true } });
   for(const p of products){
-    const count = await prisma.accounts.count({ where:{ product_code:p.code, status:'AVAILABLE' } });
-    const current = count > 0;
-    const rec = await prisma.stockalerts.findUnique({ where:{ product_code:p.code } });
-    if(!rec){
-      await prisma.stockalerts.create({ data:{ product_code:p.code, in_stock: current } });
-      continue;
+    const accounts = await prisma.accounts.findMany({ where:{ product_code:p.code, status:'AVAILABLE' }, select:{ variant_type:true, variant_duration:true } });
+    const groups = new Map();
+    for(const a of accounts){
+      const sub = `${p.code}:${a.variant_duration||0}`;
+      groups.set(sub, (groups.get(sub)||0)+1);
     }
-    const transition = detectTransition(rec.in_stock, current);
-    if(transition){
-      await prisma.stockalerts.update({ where:{ product_code:p.code }, data:{ in_stock: current } });
-      const status = transition;
-      await emitToN8N('/stock-transition', { product_code: p.code, status });
-      await notifyAdmin(`📦 Stock ${p.code} ${status === 'RESTOCKED' ? 'restocked' : 'out of stock'}`);
+    const existing = await prisma.stockalerts.findMany({ where:{ product_code:p.code } });
+    const subCodes = new Set([...groups.keys(), ...existing.map(e=>e.sub_code)]);
+    for(const sub of subCodes){
+      const count = groups.get(sub) || 0;
+      const current = count > 0;
+      const rec = existing.find(e=>e.sub_code===sub);
+      if(!rec){
+        await prisma.stockalerts.create({ data:{ product_code:p.code, sub_code: sub, last_status: current?'IN_STOCK':'OUT_OF_STOCK' } });
+        continue;
+      }
+      const transition = detectTransition(rec.last_status==='IN_STOCK', current);
+      if(transition){
+        await prisma.stockalerts.update({ where:{ product_code_sub_code:{ product_code:p.code, sub_code: sub } }, data:{ last_status: current?'IN_STOCK':'OUT_OF_STOCK', last_notified_at: new Date() } });
+        await emitToN8N('/stock-transition', { product_code: p.code, sub_code: sub, status: transition });
+        await notifyAdmin(`📦 Stock ${p.code} ${sub} ${transition === 'RESTOCKED' ? 'restocked' : 'out of stock'}`);
+      }
     }
   }
 }

@@ -11,7 +11,7 @@ async function createOrder({ buyer_phone, product_code, qty=1, amount_cents, ema
   const cfg = await prisma.subproductconfigs.findUnique({ where:{ product_code_sub_code:{ product_code, sub_code } } });
   const requiresApproval = cfg?.approval_required;
   const status = requiresApproval ? 'AWAITING_PREAPPROVAL' : 'PENDING_PAYMENT';
-  const order = await prisma.orders.create({ data:{ invoice, buyer_phone, product_code, qty, amount_cents: toCents(amount_cents), status, email } });
+  const order = await prisma.orders.create({ data:{ invoice, buyer_phone, product_code, qty, amount_cents: toCents(amount_cents), status, email, sub_code } });
   await addEvent(order.id, 'ORDER_CREATED', `Order ${invoice} created`);
   if(requiresApproval){
     const pre = await prisma.preapprovalrequests.create({ data:{ order_id: order.id, sub_code } });

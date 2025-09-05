@@ -10,12 +10,11 @@ const { sendText, sendInteractiveButtons, sendListMenu, sendImageById, sendImage
 const { sendMessage, buildOrderKeyboard } = require('../services/telegram');
 const { createOrder, setPayAck } = require('../services/orders');
 const { getStockOptions } = require('../services/stock');
-const { createClaim } = require('../services/claims');
+const { createClaim, setEwallet } = require('../services/claims');
 const { calcLinearRefund } = require('../utils/refund');
 
 const router = express.Router();
-
-const claimState = new Map();
+const { claimState, orderState } = require('./state');
 router.get('/', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
@@ -70,6 +69,18 @@ router.post('/', async (req, res) => {
             await sendText(from, 'Klaim garansi diajukan.');
           } catch { await sendText(from, 'Gagal mengajukan klaim.'); }
           claimState.delete(from);
+        } else if (state?.step === 'CLAIM_WAIT_EWALLET') {
+          if (/^\d{10,15}$/.test(body)) {
+            try {
+              await setEwallet(state.claimId, body);
+              await sendText(from, 'Nomor ShopeePay diterima. Refund diproses maksimal 2×24 jam.');
+              claimState.delete(from);
+            } catch {
+              await sendText(from, 'Gagal menyimpan nomor. Coba lagi.');
+            }
+          } else {
+            await sendText(from, 'Nomor tidak valid. Kirim angka 10-15 digit.');
+          }
         } else if (t === 'menu' || t === 'halo' || t === 'hi' || t === 'order') {
           await sendInteractiveButtons(from, 'Pilih menu:', ['Order', 'Harga', 'FAQ', '🛡️ Klaim Garansi']);
         } else if (t.startsWith('order ')) {
@@ -111,13 +122,14 @@ router.post('/', async (req, res) => {
       } else if (m.type === 'interactive') {
         const id = m.interactive?.button_reply?.id || m.interactive?.list_reply?.id || '';
         const title = m.interactive?.button_reply?.title?.toLowerCase() || '';
-        const state = claimState.get(from);
+        const claim = claimState.get(from);
+        const orderSel = orderState.get(from);
         if (id.startsWith('b')) {
-          if (state?.step === 'CLAIM_CONFIRM') {
+          if (claim?.step === 'CLAIM_CONFIRM') {
             if (id === 'b1') {
-              if (state.eligible) {
+              if (claim.eligible) {
                 await sendText(from, 'Deskripsikan masalah Anda:');
-                claimState.set(from, { step: 'CLAIM_REASON', invoice: state.invoice });
+                claimState.set(from, { step: 'CLAIM_REASON', invoice: claim.invoice });
               } else {
                 await sendText(from, 'Garansi tidak berlaku.');
                 claimState.delete(from);
@@ -126,6 +138,26 @@ router.post('/', async (req, res) => {
               await sendText(from, 'Dibatalkan.');
               claimState.delete(from);
             }
+          } else if (orderSel && title === 'beli 1') {
+            orderState.delete(from);
+            const product = await prisma.products.findUnique({ where: { code: orderSel.code } });
+            if (!product || !product.is_active) {
+              await sendText(from, 'Produk tidak tersedia.');
+            } else {
+              const order = await createOrder({ buyer_phone: from, product_code: orderSel.code, qty: 1, amount_cents: product.price_cents, sub_code: orderSel.sub_code });
+              if (order.status === 'AWAITING_PREAPPROVAL') {
+                await sendText(from, 'Order diterima dan menunggu persetujuan admin.');
+              } else {
+                const deadlineAt = new Date(order.created_at.getTime() + PAYMENT_DEADLINE_MIN * 60 * 1000);
+                const caption = `${PAYMENT_QRIS_TEXT}\nInvoice: ${order.invoice}\nTotal: Rp ${(product.price_cents)/100}\nDeadline: ${deadlineAt.toLocaleTimeString()}\nKirim foto bukti bayar ke sini.`;
+                if (PAYMENT_QRIS_MEDIA_ID) await sendImageById(from, PAYMENT_QRIS_MEDIA_ID, caption);
+                else if (PAYMENT_QRIS_IMAGE_URL) await sendImageByUrl(from, PAYMENT_QRIS_IMAGE_URL, caption);
+                else await sendText(from, caption);
+              }
+            }
+          } else if (orderSel && title === 'batal') {
+            orderState.delete(from);
+            await sendText(from, 'Dibatalkan.');
           } else if (title === 'order') await sendText(from, 'Format: order <kode> <qty> [email]');
           else if (title === 'harga') await sendText(from, 'Harga: ambil dari DB.');
           else if (title === 'faq') await sendText(from, 'Tanya saja, kami bantu.');
@@ -135,7 +167,8 @@ router.post('/', async (req, res) => {
           }
         } else if (id.startsWith('dur:')) {
           const [, code, days] = id.split(':');
-          await sendText(from, `Durasi ${days} hari dipilih untuk ${code}. Lanjutkan dengan mengetik: order ${code} 1`);
+          orderState.set(from, { code, sub_code: `${code}:${days}` });
+          await sendInteractiveButtons(from, `Durasi ${days} hari dipilih untuk ${code}.`, ['Beli 1', 'Batal']);
         }
       }
     }
