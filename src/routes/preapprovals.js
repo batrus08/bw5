@@ -11,6 +11,7 @@ router.post('/:id/approve', async (req, res) => {
     const invoice = req.params.id;
     const r = await approvePreapproval(invoice);
     if (!r.ok) return res.status(400).json(r);
+    if (r.idempotent) return res.json(r);
 
     const order = await prisma.orders.findUnique({ where: { invoice } });
     if (!order) return res.status(404).json({ ok: false, error: 'ORDER_NOT_FOUND' });
@@ -32,6 +33,7 @@ router.post('/:id/reject', async (req, res) => {
     const reason = req.body?.reason;
     const r = await rejectPreapproval(invoice, reason);
     if (!r.ok) return res.status(400).json(r);
+    if (r.idempotent) return res.json(r);
 
     const order = await prisma.orders.findUnique({ where: { invoice }, include: { preapproval: true } });
     if (order) {

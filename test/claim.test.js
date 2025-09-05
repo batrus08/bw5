@@ -41,7 +41,7 @@ const { calcLinearRefund } = require('../src/utils/refund');
 test('approveClaim calculates prorated refund', async () => {
   const r = await approveClaim(1);
   const expected = calcLinearRefund({ priceCents: order.amount_cents, warrantyDays: 300, usedDays: 5 });
-  assert.strictEqual(r.refund_cents, expected);
-  assert.strictEqual(r.status, 'APPROVED');
+  assert.strictEqual(r.claim.refund_cents, expected);
+  assert.strictEqual(r.claim.status, 'APPROVED');
 });
 

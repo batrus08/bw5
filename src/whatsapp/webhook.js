@@ -11,6 +11,7 @@ const { sendMessage, buildOrderKeyboard } = require('../services/telegram');
 const { createOrder, setPayAck } = require('../services/orders');
 const { getStockOptions } = require('../services/stock');
 const { createClaim, setEwallet } = require('../services/claims');
+const { normalizeEwallet } = require('../utils/validation');
 const { calcLinearRefund } = require('../utils/refund');
 
 const router = express.Router();
@@ -70,16 +71,17 @@ router.post('/', async (req, res) => {
           } catch { await sendText(from, 'Gagal mengajukan klaim.'); }
           claimState.delete(from);
         } else if (state?.step === 'CLAIM_WAIT_EWALLET') {
-          if (/^\d{10,15}$/.test(body)) {
+          const { normalized, isValid } = normalizeEwallet(body);
+          if (isValid) {
             try {
-              await setEwallet(state.claimId, body);
-              await sendText(from, 'Nomor ShopeePay diterima. Refund diproses maksimal 2×24 jam.');
+              await setEwallet(state.claimId, normalized);
+              await sendText(from, `Nomor ShopeePay diterima: ${normalized}. Refund diproses maksimal 2×24 jam.`);
               claimState.delete(from);
             } catch {
               await sendText(from, 'Gagal menyimpan nomor. Coba lagi.');
             }
           } else {
-            await sendText(from, 'Nomor tidak valid. Kirim angka 10-15 digit.');
+            await sendText(from, 'Format ShopeePay tidak valid. Kirim nomor 10–15 digit diawali 08 (contoh 081234567890).');
           }
         } else if (t === 'menu' || t === 'halo' || t === 'hi' || t === 'order') {
           await sendInteractiveButtons(from, 'Pilih menu:', ['Order', 'Harga', 'FAQ', '🛡️ Klaim Garansi']);

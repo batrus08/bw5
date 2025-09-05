@@ -16,8 +16,9 @@ router.post('/', async (req, res) => {
 
 router.post('/:id/approve', async (req, res) => {
   try {
-    await approveClaim(Number(req.params.id));
-    res.json({ ok: true });
+    const r = await approveClaim(Number(req.params.id));
+    if (r.idempotent) return res.json(r);
+    res.json({ ok: true, ...r });
   } catch (e) {
     res.status(400).json({ ok: false, error: e.message });
   }
@@ -25,8 +26,9 @@ router.post('/:id/approve', async (req, res) => {
 
 router.post('/:id/reject', async (req, res) => {
   try {
-    await rejectClaim(Number(req.params.id), req.body?.reason);
-    res.json({ ok: true });
+    const r = await rejectClaim(Number(req.params.id), req.body?.reason);
+    if (r.idempotent) return res.json(r);
+    res.json({ ok: true, ...r });
   } catch (e) {
     res.status(400).json({ ok: false, error: e.message });
   }
@@ -34,8 +36,9 @@ router.post('/:id/reject', async (req, res) => {
 
 router.post('/:id/ewallet', async (req, res) => {
   try {
-    await setEwallet(Number(req.params.id), req.body?.ewallet);
-    res.json({ ok: true });
+    const r = await setEwallet(Number(req.params.id), req.body?.ewallet);
+    if (r.idempotent) return res.json(r);
+    res.json({ ok: true, ...r });
   } catch (e) {
     res.status(400).json({ ok: false, error: e.message });
   }
@@ -43,8 +46,9 @@ router.post('/:id/ewallet', async (req, res) => {
 
 router.post('/:id/refunded', async (req, res) => {
   try {
-    await markRefunded(Number(req.params.id));
-    res.json({ ok: true });
+    const r = await markRefunded(Number(req.params.id));
+    if (r.idempotent) return res.json(r);
+    res.json({ ok: true, ...r });
   } catch (e) {
     res.status(400).json({ ok: false, error: e.message });
   }
