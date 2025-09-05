@@ -11,17 +11,25 @@ async function sendToN8N(path, payload) {
   const url = buildUrl(path);
   if (!url) throw new Error('N8N_BASE_URL not set');
   const token = process.env.N8N_TOKEN || '';
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Internal-Token': token,
-    },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`HTTP ${res.status}: ${text}`);
+  for (let i = 0; i < 3; i++) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Token': token,
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`HTTP ${res.status}: ${text}`);
+      }
+      return;
+    } catch (e) {
+      if (i === 2) throw e;
+      await new Promise(r => setTimeout(r, 400 * (2 ** i)));
+    }
   }
 }
 

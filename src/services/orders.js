@@ -41,6 +41,19 @@ async function rejectPreapproval(invoice, note){
   return { ok:true };
 }
 
+async function reserveAccount(orderId){
+  return await prisma.$transaction(async (tx) => {
+    const order = await tx.orders.findUnique({ where:{ id: orderId } });
+    if(!order) throw new Error('ORDER_NOT_FOUND');
+    const account = await tx.accounts.findFirst({ where:{ product_code: order.product_code, status:'AVAILABLE' }, orderBy:{ id:'asc' } });
+    if(!account) throw new Error('Stok habis');
+    await tx.accounts.update({ where:{ id: account.id, status:'AVAILABLE' }, data:{ status:'RESERVED' } });
+    await tx.orders.update({ where:{ id: order.id }, data:{ account_id: account.id } });
+    await addEvent(order.id, 'DELIVERY_READY', 'Account reserved');
+    return account;
+  });
+}
+
 async function setPayAck(invoice){
   const order = await prisma.orders.findUnique({ where:{ invoice } });
   if(!order) return { ok:false, error:'ORDER_NOT_FOUND' };
@@ -76,4 +89,4 @@ async function markInvited(invoice){
   return { ok:true };
 }
 
-module.exports = { createOrder, setPayAck, confirmPaid, rejectOrder, markInvited, approvePreapproval, rejectPreapproval };
+module.exports = { createOrder, setPayAck, confirmPaid, rejectOrder, markInvited, approvePreapproval, rejectPreapproval, reserveAccount };

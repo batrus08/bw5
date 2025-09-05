@@ -3,6 +3,7 @@ const prisma = require('../db/client');
 const { SHEET_POLL_MS, PAYMENT_DEADLINE_MIN } = require('../config/env');
 const { syncAccountsFromCSV } = require('./sheet');
 const { notifyAdmin, notifyCritical, tgCall } = require('./telegram');
+const { emitToN8N } = require('../utils/n8n');
 const { waCall } = require('./wa');
 const { sendToN8N } = require('../utils/n8n');
 
@@ -91,6 +92,32 @@ async function retryDeadLetters(){
   }
 }
 
+function detectTransition(prev, current){
+  if(prev && !current) return 'OUT_OF_STOCK';
+  if(!prev && current) return 'RESTOCKED';
+  return null;
+}
+
+async function stockTransitions(){
+  const products = await prisma.products.findMany({ where:{ is_active:true } });
+  for(const p of products){
+    const count = await prisma.accounts.count({ where:{ product_code:p.code, status:'AVAILABLE' } });
+    const current = count > 0;
+    const rec = await prisma.stockalerts.findUnique({ where:{ product_code:p.code } });
+    if(!rec){
+      await prisma.stockalerts.create({ data:{ product_code:p.code, in_stock: current } });
+      continue;
+    }
+    const transition = detectTransition(rec.in_stock, current);
+    if(transition){
+      await prisma.stockalerts.update({ where:{ product_code:p.code }, data:{ in_stock: current } });
+      const status = transition;
+      await emitToN8N('/stock-transition', { product_code: p.code, status });
+      await notifyAdmin(`📦 Stock ${p.code} ${status === 'RESTOCKED' ? 'restocked' : 'out of stock'}`);
+    }
+  }
+}
+
 async function startWorkers(){
   try {
     await prisma.orders.findFirst({ select:{ id:true }, take:1 });
@@ -102,8 +129,9 @@ async function startWorkers(){
   setInterval(wrap(remindPayments,'remindPayments'), minutes(1));
   setInterval(wrap(checkStockAndPause,'checkStockAndPause'), minutes(5));
   setInterval(wrap(retryDeadLetters,'retryDeadLetters'), minutes(1));
+  setInterval(wrap(stockTransitions,'stockTransitions'), minutes(5));
   if(SHEET_POLL_MS>0){ setInterval(wrap(syncAccountsFromCSV,'syncAccountsFromCSV'), SHEET_POLL_MS); }
   console.log('Workers started.');
 }
 
-module.exports = { startWorkers };
+module.exports = { startWorkers, stockTransitions, detectTransition };

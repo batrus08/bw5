@@ -53,11 +53,15 @@ router.post('/', async (req, res) => {
           const product = await prisma.products.findUnique({ where:{ code } });
           if (!product || !product.is_active) { await sendText(from, 'Produk tidak tersedia.'); continue; }
           const order = await createOrder({ buyer_phone: from, product_code: code, qty, amount_cents: product.price_cents * qty, email });
-          const deadlineAt = new Date(order.created_at.getTime() + PAYMENT_DEADLINE_MIN*60*1000);
-          const caption = `${PAYMENT_QRIS_TEXT}\nInvoice: ${order.invoice}\nTotal: Rp ${(product.price_cents*qty)/100}\nDeadline: ${deadlineAt.toLocaleTimeString()}\nKirim foto bukti bayar ke sini.`;
-          if (PAYMENT_QRIS_MEDIA_ID) await sendImageById(from, PAYMENT_QRIS_MEDIA_ID, caption);
-          else if (PAYMENT_QRIS_IMAGE_URL) await sendImageByUrl(from, PAYMENT_QRIS_IMAGE_URL, caption);
-          else await sendText(from, caption);
+          if(order.status === 'AWAITING_PREAPPROVAL'){
+            await sendText(from, 'Order diterima dan menunggu persetujuan admin.');
+          } else {
+            const deadlineAt = new Date(order.created_at.getTime() + PAYMENT_DEADLINE_MIN*60*1000);
+            const caption = `${PAYMENT_QRIS_TEXT}\nInvoice: ${order.invoice}\nTotal: Rp ${(product.price_cents*qty)/100}\nDeadline: ${deadlineAt.toLocaleTimeString()}\nKirim foto bukti bayar ke sini.`;
+            if (PAYMENT_QRIS_MEDIA_ID) await sendImageById(from, PAYMENT_QRIS_MEDIA_ID, caption);
+            else if (PAYMENT_QRIS_IMAGE_URL) await sendImageByUrl(from, PAYMENT_QRIS_IMAGE_URL, caption);
+            else await sendText(from, caption);
+          }
         } else if (t.startsWith('stok ')) {
           const code = t.split(/\s+/)[1];
           const count = await prisma.accounts.count({ where:{ product_code: code, status:'AVAILABLE' } });

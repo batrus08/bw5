@@ -55,6 +55,28 @@ router.post('/', async (req, res) => {
           await answerCallbackQuery(update.callback_query.id, '❌ Not found');
           await sendMessage(chatId, `❌ Order ${invoice} not found`);
         }
+      } else if (data.startsWith('ADM:PREAPPROVE:OK:')) {
+        const invoice = data.split(':')[3];
+        const base = process.env.PUBLIC_URL || `http://localhost:${process.env.PORT||3000}`;
+        try {
+          await fetch(`${base}/preapprovals/${invoice}/approve`, { method:'POST', headers:{'Content-Type':'application/json'} });
+          await answerCallbackQuery(update.callback_query.id, '✅ Approved');
+          const newText = `${msg.text}\n✅ Disetujui`;
+          await editMessageText(chatId, msg.message_id, newText, { parse_mode: 'HTML' });
+        } catch (e) {
+          await answerCallbackQuery(update.callback_query.id, '❌ Fail');
+        }
+      } else if (data.startsWith('ADM:PREAPPROVE:NO:')) {
+        const invoice = data.split(':')[3];
+        const base = process.env.PUBLIC_URL || `http://localhost:${process.env.PORT||3000}`;
+        try {
+          await fetch(`${base}/preapprovals/${invoice}/reject`, { method:'POST', headers:{'Content-Type':'application/json'} });
+          await answerCallbackQuery(update.callback_query.id, '❌ Rejected');
+          const newText = `${msg.text}\n❌ Ditolak`;
+          await editMessageText(chatId, msg.message_id, newText, { parse_mode: 'HTML' });
+        } catch (e) {
+          await answerCallbackQuery(update.callback_query.id, '❌ Fail');
+        }
       }
       return res.sendStatus(200);
     }
