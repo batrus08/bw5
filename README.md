@@ -178,7 +178,9 @@ Respons:
 { "ok": true, "variant_id": "uuid" }
 ```
 
-Untuk sinkronisasi akun melalui `/api/sheet-sync`, sertakan `natural_key` agar idempoten. Format yang dianjurkan dari Apps Script: `<sheet>|<row>|<code>`.
+Untuk sinkronisasi akun melalui `/api/sheet-sync`, sertakan `natural_key` agar idempoten. Format yang dianjurkan dari Apps Script: `<sheet>|<row>|<code>`. Jika username kosong, Apps Script wajib mengirim `natural_key` dengan format: `natural_key = <sheet_name>|<row_number>|<code>` (contoh: `Produk Netflix|123|NET-1P1U-30`).
+
+Catatan operasi: `fifo_order` tidak berubah saat edit; gunakan `reorder:true` bila ingin memindahkan prioritas.
 
 ## Telegram Webhook
 Pastikan domain sudah HTTPS, kemudian set webhook:
