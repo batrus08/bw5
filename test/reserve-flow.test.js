@@ -17,7 +17,6 @@ const store = {
 require.cache[dbPath] = { exports: {
   $transaction: async (fn) => fn({
     accounts: {
-      findFirst: async ({ where }) => store.accounts.find(a=>a.product_code===where.product_code && a.status===where.status),
       update: async ({ where, data }) => {
         const acc = store.accounts.find(a=>a.id===where.id && a.status===where.status);
         if(!acc) throw new Error('Stok habis');
@@ -28,6 +27,7 @@ require.cache[dbPath] = { exports: {
       findUnique: async ({ where }) => store.orders.find(o=>o.id===where.id),
       update: async ({ where, data }) => { const o=store.orders.find(x=>x.id===where.id); Object.assign(o,data); return o; },
     },
+    $queryRaw: async () => [store.accounts.find(a=>a.status==='AVAILABLE')].filter(Boolean),
   }),
   orders: {
     findUnique: async ({ where }) => store.orders.find(o=>o.invoice===where.invoice),

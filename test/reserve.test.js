@@ -5,18 +5,16 @@ const dbPath = require.resolve('../src/db/client');
 const eventPath = require.resolve('../src/services/events');
 
 const store = {
-  accounts: [{ id: 1, product_code: 'P', status: 'AVAILABLE' }],
+  accounts: [{ id: 1, product_code: 'P', status: 'AVAILABLE', account_group_id: 'G1', profile_index: 1, profile_name: 'A', username:'u', password:'p' }],
   orders: [
-    { id: 1, product_code: 'P' },
-    { id: 2, product_code: 'P' },
+    { id: 1, product_code: 'P', metadata: {} },
+    { id: 2, product_code: 'P', metadata: {} },
   ],
 };
 
 require.cache[dbPath] = { exports: {
   $transaction: async (fn) => fn({
     accounts: {
-      findFirst: async ({ where }) =>
-        store.accounts.find((a) => a.product_code === where.product_code && a.status === where.status),
       update: async ({ where, data }) => {
         const acc = store.accounts.find((a) => a.id === where.id && a.status === where.status);
         if (!acc) throw new Error('Stok habis');
@@ -32,6 +30,7 @@ require.cache[dbPath] = { exports: {
         return o;
       },
     },
+    $queryRaw: async () => [store.accounts.find(a=>a.status==='AVAILABLE')].filter(Boolean),
   }),
 } };
 
