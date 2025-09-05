@@ -1,6 +1,8 @@
 const assert = require('node:assert');
 const { test } = require('node:test');
 
+const dbPath = require.resolve('../src/db/client');
+require.cache[dbPath] = { exports:{} };
 const { parseApprovalRequired } = require('../src/services/sheet');
 
 test('parseApprovalRequired only accepts exact "On"', () => {

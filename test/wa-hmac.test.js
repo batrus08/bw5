@@ -4,6 +4,10 @@ const express = require('express');
 
 // set env before requiring router
 process.env.WA_APP_SECRET = 'testsecret';
+const dbPath = require.resolve('../src/db/client');
+require.cache[dbPath] = { exports:{} };
+const eventsPath = require.resolve('../src/services/events');
+require.cache[eventsPath] = { exports:{ addEvent: async ()=>{} } };
 const waWebhook = require('../src/whatsapp/webhook');
 
 function startApp() {

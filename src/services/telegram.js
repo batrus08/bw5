@@ -27,6 +27,15 @@ function answerCallbackQuery(id, text='', extra={}){ return tgCall('answerCallba
 async function notifyAdmin(text){ try{ await sendMessage(ADMIN_CHAT_ID, text, { parse_mode:'HTML' }); }catch(_){} }
 async function notifyCritical(text){ await notifyAdmin('⚠️ <b>CRITICAL</b>\n'+text); }
 
+async function notifyHelpRequested(orderId, stageCtx){
+  const kb = { reply_markup:{ inline_keyboard:[
+    [{text:'▶️ Resume', callback_data:`HELP_RESUME:${orderId}`}],
+    [{text:'⏭ Skip → PAID', callback_data:`HELP_SKIP:${orderId}:PAID`}],
+    [{text:'❌ Cancel', callback_data:`HELP_CANCEL:${orderId}`}],
+  ] } };
+  await sendMessage(ADMIN_CHAT_ID, `🆘 HELP_REQUESTED #${orderId}\n<code>${JSON.stringify(stageCtx)}</code>`, { parse_mode:'HTML', ...kb });
+}
+
 function buildOrderKeyboard(invoice, productMode){
   const rows=[];
   rows.push([{text:'✅ Konfirmasi',callback_data:`confirm:${invoice}`},{text:'❌ Tolak',callback_data:`reject:${invoice}`}]);
@@ -55,4 +64,4 @@ function buildGrid(items=[], cols=3, mapFn=it=>({ text: it.label, data: it.id })
   return { reply_markup:{ inline_keyboard: rows } };
 }
 
-module.exports = { sendMessage, editMessageText, answerCallbackQuery, notifyAdmin, notifyCritical, buildOrderKeyboard, buildNumberGrid, buildGrid, tgCall };
+module.exports = { sendMessage, editMessageText, answerCallbackQuery, notifyAdmin, notifyCritical, notifyHelpRequested, buildOrderKeyboard, buildNumberGrid, buildGrid, tgCall };
