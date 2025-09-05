@@ -45,6 +45,12 @@ Backend Express + Prisma untuk Telegram dan WhatsApp.
    curl "https://yourdomain.com/stock/options?productId=CHATGPT"
    ```
 
+## Pengujian
+Jalankan seluruh tes unit:
+```bash
+npm test
+```
+
 ## Telegram Webhook
 Pastikan domain sudah HTTPS, kemudian set webhook:
 ```bash

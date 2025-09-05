@@ -2,7 +2,7 @@
   "name": "bot-backend-ultra-final",
   "version": "2.2.0",
   "private": true,
-  "description": "Express + Prisma backend for WhatsApp (customer) & Telegram (admin) \u2014 production ready.",
+  "description": "Express + Prisma backend for WhatsApp (customer) & Telegram (admin) — production ready.",
   "main": "server.js",
   "engines": {
     "node": ">=18"
@@ -13,7 +13,8 @@
     "postinstall": "prisma generate",
     "deploy:migrate": "prisma migrate deploy",
     "db:push": "prisma db push",
-    "seed": "node src/db/migrate/seed.js"
+    "seed": "node src/db/migrate/seed.js",
+    "test": "node --test"
   },
   "dependencies": {
     "express": "^4.19.2",
