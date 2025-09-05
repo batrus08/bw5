@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { upsertVariantFromSheetRow } = require('../services/variants');
 const { addEvent } = require('../services/events');
+const { allow } = require('../utils/rateLimit');
 const { SHEET_SYNC_SECRET } = require('../config/env');
 
 const SHEET_SECRET = SHEET_SYNC_SECRET || 'secret';
@@ -12,6 +13,11 @@ router.post('/variants-sync', express.json({ type: 'application/json' }), async 
   const expected = crypto.createHmac('sha256', SHEET_SECRET).update(req.rawBody).digest('hex');
   if (!sig || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
     return res.sendStatus(403);
+  }
+  const key = `sync:${req.ip}:${req.path}`;
+  if(!allow(key,60)){
+    await addEvent(null,'RATE_LIMITED_SYNC','rate limited',{ ip:req.ip, route:req.path });
+    return res.status(429).json({ ok:false });
   }
   try {
     const variant_id = await upsertVariantFromSheetRow(req.body);
