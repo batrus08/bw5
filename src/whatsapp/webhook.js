@@ -102,7 +102,7 @@ router.post('/', async (req, res) => {
             await withHelpButtons(from, 'Order diterima dan menunggu persetujuan admin.');
           } else if(product.sk_text && !order.tnc_ack_at){
             orderState.set(from, { step:'TNC_ACK', order, product });
-            await withHelpButtons(from, product.sk_text, 'Setuju');
+            await sendInteractiveButtons(from, product.sk_text, ['Setuju','Tolak']);
           } else {
             const deadlineAt = new Date(order.created_at.getTime() + PAYMENT_DEADLINE_MIN*60*1000);
             const caption = `${PAYMENT_QRIS_TEXT}\nInvoice: ${order.invoice}\nTotal: Rp ${(product.price_cents*qty)/100}\nDeadline: ${deadlineAt.toLocaleTimeString()}\nKirim foto bukti bayar ke sini.`;
@@ -159,6 +159,10 @@ router.post('/', async (req, res) => {
             } else {
               await withHelpButtons(from, caption);
             }
+          } else if(id === 'b2'){
+            await prisma.orders.update({ where:{ id: orderSel.order.id }, data:{ status:'CANCELLED' } });
+            await addEvent(orderSel.order.id, 'TNC_DECLINED', 'terms declined');
+            await withHelpButtons(from, 'Pesanan dibatalkan karena S&K ditolak.');
           }
           orderState.delete(from);
           continue;

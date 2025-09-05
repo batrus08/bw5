@@ -98,8 +98,8 @@ async function lowStockAlert(){
   const summary = await getStockSummaryRaw();
   const thresholds = await prisma.thresholds.findMany();
   const map = new Map(thresholds.map(t=>[t.variant_id, t]));
-  const now = new Date();
-  const hourStr = now.toISOString().slice(0,13).replace(/[-:T]/g,'');
+  const nowWIB = new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Jakarta'}));
+  const hourStr = nowWIB.toISOString().slice(0,13).replace(/[-:T]/g,'');
   for(const s of summary){
     const th = map.get(s.variant_id);
     if(!th) continue;
