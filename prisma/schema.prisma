@@ -85,6 +85,7 @@ enum TaskStatus {
 enum Channel {
   TELEGRAM
   WHATSAPP
+  N8N
 }
 
 enum PreapprovalStatus {

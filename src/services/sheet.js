@@ -2,6 +2,7 @@
 const prisma = require('../db/client');
 const { SHEET_MODE, SHEET_CSV_URL, SHEET_SECRET } = require('../config/env');
 const { notifyCritical } = require('./telegram');
+const { emitToN8N } = require('../utils/n8n');
 
 /**
  * Parse "approval_required" column coming from spreadsheet.
@@ -60,4 +61,27 @@ async function syncAccountsFromCSV(){
   }
 }
 
-module.exports = { syncAccountsFromCSV, parseApprovalRequired };
+async function upsertSubproductConfigs(rows = []) {
+  let upserts = 0;
+  for (const r of rows) {
+    const data = {
+      product_code: r.product_code,
+      sub_code: [r.variant || '', r.duration_days || ''].filter(Boolean).join('-') || 'default',
+      approval_required: parseApprovalRequired(r.approval_required),
+      approval_notes_default: r.approval_notes_default || null,
+    };
+    await prisma.subproductconfigs.upsert({
+      where: { product_code_sub_code: { product_code: data.product_code, sub_code: data.sub_code } },
+      update: data,
+      create: data,
+    });
+    upserts++;
+  }
+  return upserts;
+}
+
+async function appendWarrantyLog(row) {
+  await emitToN8N('/warranty-log', row);
+}
+
+module.exports = { syncAccountsFromCSV, parseApprovalRequired, upsertSubproductConfigs, appendWarrantyLog };
