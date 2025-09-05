@@ -14,7 +14,7 @@ require.cache[waPath] = { exports: {
   sendInteractiveButtons: async (...args) => { messages.push({ type: 'buttons', args }); },
   sendListMenu: async () => {},
 } };
-require.cache[claimPath] = { exports: { createClaim: async (invoice, reason) => { messages.push({ type: 'claim', invoice, reason }); } } };
+require.cache[claimPath] = { exports: { createClaim: async (invoice, reason) => { messages.push({ type: 'claim', invoice, reason }); }, setEwallet: async () => {} } };
 require.cache[tgPath] = { exports: { sendMessage: async () => {}, buildOrderKeyboard: () => ({}) } };
 require.cache[dbPath] = { exports: {
   orders: {

@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 
-const { createClaim, approveClaim, rejectClaim, setEwallet, markRefunded } = require('../services/claims');
+const { createClaim, approveClaim, rejectClaim, setEwallet, markRefunded, requestEwallet } = require('../services/claims');
+const { claimState } = require('../whatsapp/state');
 
 router.post('/', async (req, res) => {
   try {
@@ -43,6 +44,16 @@ router.post('/:id/ewallet', async (req, res) => {
 router.post('/:id/refunded', async (req, res) => {
   try {
     await markRefunded(Number(req.params.id));
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
+router.post('/:id/request-ewallet', async (req, res) => {
+  try {
+    const { phone } = await requestEwallet(Number(req.params.id));
+    claimState.set(phone, { step: 'CLAIM_WAIT_EWALLET', claimId: Number(req.params.id) });
     res.json({ ok: true });
   } catch (e) {
     res.status(400).json({ ok: false, error: e.message });

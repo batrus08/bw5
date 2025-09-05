@@ -2,6 +2,7 @@ const prisma = require('../db/client');
 const { calcLinearRefund } = require('../utils/refund');
 const { emitToN8N } = require('../utils/n8n');
 const { appendWarrantyLog } = require('./sheet');
+const { sendText } = require('./wa');
 
 async function createClaim(invoice, reason) {
   const order = await prisma.orders.findUnique({ where: { invoice }, include: { product: true } });
@@ -40,4 +41,15 @@ async function markRefunded(id) {
 }
 
 module.exports = { createClaim, approveClaim, rejectClaim, setEwallet, markRefunded };
+
+async function requestEwallet(id) {
+  const claim = await prisma.warrantyclaims.findUnique({ where: { id }, include: { order: true } });
+  if (!claim) throw new Error('CLAIM_NOT_FOUND');
+  const phone = claim.order.buyer_phone;
+  const refund = claim.refund_cents || 0;
+  await sendText(phone, `Klaim Anda disetujui. Refund Rp${refund/100}. Kirim nomor ShopeePay Anda (contoh 08xxxx).`);
+  return { phone };
+}
+
+module.exports.requestEwallet = requestEwallet;
 

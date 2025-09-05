@@ -66,6 +66,12 @@ Durasi 30 hari – Stok: 5
 
 Saat pembayaran dikonfirmasi, sistem akan memanggil `reserveAccount()` untuk mengunci stok agar tidak terjadi oversell.
 
+Flow baru:
+
+- WA: pilih produk → pilih durasi (cek stok) → tekan tombol **Beli 1**.
+- WA: klaim garansi → setelah admin approve, bot meminta nomor ShopeePay dan menunggu input.
+- Admin: pre-approval bisa diaktifkan per sub-produk (contoh `PROD:30`).
+
 ## Integrasi n8n
 Backend dapat mengirim setiap event order ke workflow n8n sehingga otomatisasi bisa dilakukan tanpa mengubah kode.
 
@@ -90,6 +96,20 @@ Event lain yang mungkin diterima:
 
 ```json
 { "product_code": "CHATGPT", "status": "OUT_OF_STOCK" }
+```
+
+Contoh skema `stockalerts` terbaru:
+
+```prisma
+model stockalerts {
+  id             String   @id @default(cuid())
+  product_code   String
+  sub_code       String
+  last_status    String
+  last_notified_at DateTime?
+
+  @@unique([product_code, sub_code])
+}
 ```
 
 ## Telegram Webhook

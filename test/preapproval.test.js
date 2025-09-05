@@ -39,10 +39,12 @@ test('order requiring approval goes to AWAITING_PREAPPROVAL', async () => {
   assert.strictEqual(store.preapps.length, 1);
   assert.strictEqual(emitted.length, 1);
   assert.strictEqual(emitted[0][0], '/preapproval-pending');
+  assert.strictEqual(store.orders[0].sub_code, 'need');
 });
 
 test('order without approval goes to PENDING_PAYMENT', async () => {
   const o = await createOrder({ buyer_phone: '1', product_code: 'P', qty: 1, amount_cents: 100, sub_code: 'none' });
   assert.strictEqual(o.status, 'PENDING_PAYMENT');
+  assert.strictEqual(store.orders[1].sub_code, 'none');
 });
 
