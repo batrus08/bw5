@@ -56,6 +56,16 @@ Jalankan seluruh tes unit:
 npm test
 ```
 
+## Contoh Alur WhatsApp
+
+Menu awal kini menampilkan tombol "🛡️ Klaim Garansi" bersama menu lain. Untuk memilih durasi produk dan melihat stok real-time gunakan perintah `durasi <kode>` yang akan menampilkan daftar seperti:
+
+```
+Durasi 30 hari – Stok: 5
+```
+
+Saat pembayaran dikonfirmasi, sistem akan memanggil `reserveAccount()` untuk mengunci stok agar tidak terjadi oversell.
+
 ## Integrasi n8n
 Backend dapat mengirim setiap event order ke workflow n8n sehingga otomatisasi bisa dilakukan tanpa mengubah kode.
 

@@ -1,6 +1,8 @@
 
 const prisma = require('../db/client');
 const { addEvent } = require('./events');
+const { emitToN8N } = require('../utils/n8n');
+const { sendText } = require('./wa');
 
 function toCents(n){ return Math.round(Number(n||0)); }
 
@@ -12,7 +14,16 @@ async function createOrder({ buyer_phone, product_code, qty=1, amount_cents, ema
   const order = await prisma.orders.create({ data:{ invoice, buyer_phone, product_code, qty, amount_cents: toCents(amount_cents), status, email } });
   await addEvent(order.id, 'ORDER_CREATED', `Order ${invoice} created`);
   if(requiresApproval){
-    await prisma.preapprovalrequests.create({ data:{ order_id: order.id, sub_code } });
+    const pre = await prisma.preapprovalrequests.create({ data:{ order_id: order.id, sub_code } });
+    await emitToN8N('/preapproval-pending', {
+      preapprovalId: pre.id,
+      orderId: order.id,
+      invoice,
+      productCode: product_code,
+      variant: sub_code,
+      durationDays: cfg?.duration_days || null,
+      buyerPhone: buyer_phone,
+    });
   }
   return order;
 }
@@ -67,6 +78,14 @@ async function confirmPaid(invoice){
   if(!order) return { ok:false, error:'ORDER_NOT_FOUND' };
   const upd = await prisma.orders.update({ where:{ invoice }, data:{ status:'PAID', pay_ack_at: new Date() } });
   await addEvent(upd.id, 'PAY_ACK', `Order ${invoice} confirmed paid`);
+  try {
+    await reserveAccount(order.id);
+  } catch (e) {
+    await prisma.orders.update({ where:{ id: order.id }, data:{ status:'REJECTED' } }).catch(()=>{});
+    await sendText(order.buyer_phone, 'Stok untuk durasi ini telah habis. Silakan pilih durasi lain.');
+    await addEvent(order.id, 'DELIVERY_NO_STOCK', 'Reservation failed');
+    return { ok:false, error:'OUT_OF_STOCK' };
+  }
   if(order.product.delivery_mode==='privat_invite'){ await prisma.tasks.create({ data:{ order_id: order.id, kind:'INVITE_CHATGPT', due_at: new Date(Date.now()+15*60*1000) } }); await addEvent(order.id,'INVITE_QUEUED','Invite task created',{ kind:'INVITE_CHATGPT' }); }
   else if(order.product.delivery_mode==='canva_invite'){ await prisma.tasks.create({ data:{ order_id: order.id, kind:'INVITE_CANVA', due_at: new Date(Date.now()+15*60*1000) } }); await addEvent(order.id,'INVITE_QUEUED','Invite task created',{ kind:'INVITE_CANVA' }); }
   else { await addEvent(order.id, 'DELIVERY_READY', 'Ready to deliver account'); }
