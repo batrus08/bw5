@@ -1,6 +1,7 @@
 
 const prisma = require('../db/client');
 const { addEvent } = require('./events');
+const { notifyHelpRequested } = require('./telegram');
 const { emitToN8N } = require('../utils/n8n');
 const { sendText } = require('./wa');
 const { resolveVariantByCode } = require('./variants');
@@ -95,9 +96,6 @@ async function confirmPaid(invoice){
   if(order.metadata?.code){
     variant = await resolveVariantByCode(order.metadata.code).catch(()=>null);
   }
-  if(!variant && order.product_code){
-    variant = await resolveVariantByCode(order.product_code).catch(()=>null);
-  }
   if(order.delivery_mode==='INVITE_ONLY' || order.product.delivery_mode==='privat_invite' || order.product.delivery_mode==='canva_invite'){
     await addEvent(order.id,'INVITE_QUEUED','Invite requested');
     const kind = order.product.delivery_mode==='canva_invite' ? 'INVITE_CANVA' : 'INVITE_CHATGPT';
@@ -118,7 +116,7 @@ async function confirmPaid(invoice){
   const expire = durationDays ? new Date(now.getTime() + durationDays*86400000) : null;
   const idem = order.idempotency_key || `deliver:${invoice}`;
   await prisma.orders.update({ where:{ id: order.id }, data:{ fulfilled_at: now, expires_at: expire, status:'DELIVERED', idempotency_key: idem } });
-  await addEvent(order.id,'CREDENTIALS_SENT','Credentials sent',{ account_id: account.id });
+  await addEvent(order.id,'CREDENTIALS_SENT','Credentials sent',{ account_id: account.id },'SYSTEM','system', idem);
   return { ok:true, order:upd };
 }
 
@@ -155,6 +153,7 @@ async function requestHelp(orderId, stageCtx){
   const updated = await prisma.orders.update({ where: { id: orderId }, data: { status: 'ON_HOLD_HELP' } });
   const meta = { prev_status: prevStatus, stage: stageCtx };
   await addEvent(updated.id, 'HELP_REQUESTED', 'Customer requested help', meta);
+  await notifyHelpRequested(orderId, stageCtx);
   return updated;
 }
 

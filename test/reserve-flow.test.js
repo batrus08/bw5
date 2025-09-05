@@ -67,7 +67,7 @@ test('only one confirmation succeeds reserving stock', async () => {
 test('fallback by product_code and auto-disable when max usage reached', async () => {
   store.accounts = [{ id:2, variant_id:null, product_code:'X', status:'AVAILABLE', max_usage:1, used_count:0, fifo_order:1n, natural_key:'k2' }];
   store.orders.push({ id:3, invoice:'C', product_code:'X', buyer_phone:'3', product:{ delivery_mode:'sharing', duration_months:1 }, delivery_mode:'USERPASS' });
-  require.cache[variantPath].exports.resolveVariantByCode = async () => null;
+  require.cache[variantPath].exports.resolveVariantByCode = async () => { throw new Error('should not call'); };
   delete require.cache[require.resolve('../src/services/orders')];
   const { confirmPaid: confirmPaid2 } = require('../src/services/orders');
   await confirmPaid2('C');

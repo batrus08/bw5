@@ -3,6 +3,7 @@ const prisma = require('../db/client');
 const { SHEET_POLL_MS, PAYMENT_DEADLINE_MIN } = require('../config/env');
 const { syncAccountsFromCSV } = require('./sheet');
 const { notifyAdmin, notifyCritical, tgCall } = require('./telegram');
+const { getStockSummaryRaw } = require('./stock');
 const { addEvent } = require('./events');
 const { emitToN8N } = require('../utils/n8n');
 const { waCall } = require('./wa');
@@ -93,6 +94,26 @@ async function retryDeadLetters(){
   }
 }
 
+async function lowStockAlert(){
+  const summary = await getStockSummaryRaw();
+  const thresholds = await prisma.thresholds.findMany();
+  const map = new Map(thresholds.map(t=>[t.variant_id, t]));
+  const now = new Date();
+  const hourStr = now.toISOString().slice(0,13).replace(/[-:T]/g,'');
+  for(const s of summary){
+    const th = map.get(s.variant_id);
+    if(!th) continue;
+    const trigger = (th.low_stock_units!=null && s.units <= th.low_stock_units) ||
+      (th.low_stock_capacity!=null && s.capacity <= th.low_stock_capacity);
+    if(!trigger) continue;
+    const idem = `lowstock:${s.code}:${hourStr}`;
+    const ev = await addEvent(null,'LOW_STOCK_ALERT',`Low stock ${s.code}`,{ code:s.code, units:s.units, capacity:s.capacity },'SYSTEM','worker', idem);
+    if(ev){
+      await notifyAdmin(`⚠️ Stok menipis <b>${s.code}</b> → unit: ${s.units}, capacity: ${s.capacity}`);
+    }
+  }
+}
+
 function detectTransition(prev, current){
   if(prev && !current) return 'OUT_OF_STOCK';
   if(!prev && current) return 'RESTOCKED';
@@ -151,8 +172,9 @@ async function startWorkers(){
   setInterval(wrap(retryDeadLetters,'retryDeadLetters'), minutes(1));
   setInterval(wrap(stockTransitions,'stockTransitions'), minutes(5));
   setInterval(wrap(expiryReminderJob,'expiryReminderJob'), minutes(1));
+  setInterval(wrap(lowStockAlert,'lowStockAlert'), minutes(5));
   if(SHEET_POLL_MS>0){ setInterval(wrap(syncAccountsFromCSV,'syncAccountsFromCSV'), SHEET_POLL_MS); }
   console.log('Workers started.');
 }
 
-module.exports = { startWorkers, stockTransitions, detectTransition, getExpiryReminderCandidates };
+module.exports = { startWorkers, stockTransitions, detectTransition, getExpiryReminderCandidates, lowStockAlert };

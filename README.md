@@ -123,6 +123,32 @@ model stockalerts {
 }
 ```
 
+## n8n flows
+
+Selain event real-time, backend menyediakan beberapa alur khusus untuk integrasi spreadsheet via n8n:
+
+- `POST /tx-append` akan menambahkan baris baru ke tab **TRANSACTIONS**.
+- Pekerja berkala memanggil flow untuk menyinkronkan ringkasan:
+  - **AKTIF** → order dengan `expires_at >= now`
+  - **BERAKHIR** → order dengan `expires_at < now`
+
+Contoh payload yang dikirim ke `/tx-append`:
+
+```json
+{
+  "ts": "2024-01-01T00:00:00.000Z",
+  "invoice": "INV-123",
+  "buyer": "628123456789",
+  "code": "PROD30",
+  "variant_id": "uuid-v1",
+  "order_status": "DELIVERED",
+  "fulfilled_at": "2024-01-01T00:00:00.000Z",
+  "expires_at": "2024-01-31T00:00:00.000Z",
+  "account_id": 1,
+  "channel": "WA"
+}
+```
+
 ## Telegram Webhook
 Pastikan domain sudah HTTPS, kemudian set webhook:
 ```bash
