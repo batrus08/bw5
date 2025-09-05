@@ -3,6 +3,18 @@ const prisma = require('../db/client');
 const { SHEET_MODE, SHEET_CSV_URL, SHEET_SECRET } = require('../config/env');
 const { notifyCritical } = require('./telegram');
 
+/**
+ * Parse "approval_required" column coming from spreadsheet.
+ * Only exact string "On" (case sensitive) should be treated as true.
+ * Anything else including empty string, "off", etc results in false.
+ * This helper is exported for unit tests.
+ * @param {string|undefined|null} v
+ * @returns {boolean}
+ */
+function parseApprovalRequired(v) {
+  return v === 'On';
+}
+
 function parseCSV(text){
   const lines = text.split(/\r?\n/).filter(Boolean);
   const header = lines.shift().split(',').map(s=>s.trim());
@@ -48,4 +60,4 @@ async function syncAccountsFromCSV(){
   }
 }
 
-module.exports = { syncAccountsFromCSV };
+module.exports = { syncAccountsFromCSV, parseApprovalRequired };
