@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const health = require('./src/routes/health');
 const status = require('./src/routes/status');
 const stock = require('./src/routes/stock');
+const sheetSync = require('./src/routes/sheet-sync');
 const preapprovals = require('./src/routes/preapprovals');
 const claims = require('./src/routes/claims');
 const telegramWebhook = require('./src/telegram/webhook');
@@ -42,6 +43,7 @@ app.use((req, res, next) => {
 app.use('/healthz', health);
 app.use('/status', status);
 app.use('/stock', stock);
+app.use('/api', sheetSync);
 app.use('/preapprovals', preapprovals);
 app.use('/claims', claims);
 app.use('/webhook/wa', waWebhook);

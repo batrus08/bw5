@@ -5,10 +5,10 @@ const dbPath = require.resolve('../src/db/client');
 const eventPath = require.resolve('../src/services/events');
 
 const store = {
-  accounts: [{ id: 1, product_code: 'P', status: 'AVAILABLE', account_group_id: 'G1', profile_index: 1, profile_name: 'A', username:'u', password:'p' }],
+  accounts: [{ id: 1, variant_id: 'v1', status: 'AVAILABLE', max_usage:1, used_count:0, fifo_order:1n, natural_key:'k1' }],
   orders: [
-    { id: 1, product_code: 'P', metadata: {} },
-    { id: 2, product_code: 'P', metadata: {} },
+    { id: 1, metadata: {} },
+    { id: 2, metadata: {} },
   ],
 };
 
@@ -16,7 +16,7 @@ require.cache[dbPath] = { exports: {
   $transaction: async (fn) => fn({
     accounts: {
       update: async ({ where, data }) => {
-        const acc = store.accounts.find((a) => a.id === where.id && a.status === where.status);
+        const acc = store.accounts.find((a) => a.id === where.id);
         if (!acc) throw new Error('Stok habis');
         Object.assign(acc, data);
         return acc;
@@ -30,7 +30,9 @@ require.cache[dbPath] = { exports: {
         return o;
       },
     },
-    $queryRaw: async () => [store.accounts.find(a=>a.status==='AVAILABLE')].filter(Boolean),
+    $queryRaw: async (strings, variantId) => {
+      return store.accounts.filter(a=>a.variant_id===variantId && a.status==='AVAILABLE' && a.used_count<a.max_usage);
+    },
   }),
 } };
 
@@ -39,8 +41,9 @@ require.cache[eventPath] = { exports: { addEvent: async () => {} } };
 const { reserveAccount } = require('../src/services/orders');
 
 test('reserveAccount allows only one reservation', async () => {
-  const [a, b] = await Promise.allSettled([reserveAccount(1), reserveAccount(2)]);
-  assert.strictEqual(a.status, 'fulfilled');
-  assert.strictEqual(b.status, 'rejected');
+  await reserveAccount(1, 'v1');
+  assert.strictEqual(store.accounts[0].status, 'DISABLED');
+  const second = await Promise.allSettled([reserveAccount(2, 'v1')]);
+  assert.strictEqual(second[0].status, 'rejected');
 });
 

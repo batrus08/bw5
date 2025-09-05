@@ -3,6 +3,7 @@ const prisma = require('../db/client');
 const { addEvent } = require('./events');
 const { emitToN8N } = require('../utils/n8n');
 const { sendText } = require('./wa');
+const { resolveVariantByCode } = require('./variants');
 
 function toCents(n){ return Math.round(Number(n||0)); }
 
@@ -58,16 +59,17 @@ async function rejectPreapproval(invoice, note){
   return { ok:true };
 }
 
-async function reserveAccount(orderId){
+async function reserveAccount(orderId, variant_id){
   return await prisma.$transaction(async (tx) => {
     const order = await tx.orders.findUnique({ where:{ id: orderId } });
     if(!order) throw new Error('ORDER_NOT_FOUND');
-    const [account] = await tx.$queryRaw`SELECT id, account_group_id, profile_index, profile_name, username, password FROM accounts WHERE product_code=${order.product_code} AND status='AVAILABLE' ORDER BY account_group_id, profile_index FOR UPDATE SKIP LOCKED LIMIT 1`;
-    if(!account) throw new Error('Stok habis');
-    await tx.accounts.update({ where:{ id: account.id, status:'AVAILABLE' }, data:{ status:'RESERVED' } });
-    const meta = Object.assign({}, order.metadata || {}, { account_group_id: account.account_group_id, profile_index: account.profile_index, profile_name: account.profile_name });
-    await tx.orders.update({ where:{ id: order.id }, data:{ account_id: account.id, metadata: meta } });
-    await addEvent(order.id, 'DELIVERY_READY', 'Account reserved');
+    const [account] = await tx.$queryRaw`SELECT id, used_count, max_usage FROM accounts WHERE variant_id=${variant_id} AND status='AVAILABLE' AND used_count < max_usage ORDER BY fifo_order ASC, id ASC FOR UPDATE SKIP LOCKED LIMIT 1`;
+    if(!account) throw new Error('OUT_OF_STOCK');
+    const used = account.used_count + 1;
+    const disable = used >= account.max_usage;
+    await tx.accounts.update({ where:{ id: account.id }, data:{ used_count: used, status: disable ? 'DISABLED' : 'AVAILABLE' } });
+    await tx.orders.update({ where:{ id: order.id }, data:{ account_id: account.id } });
+    await addEvent(order.id, 'DELIVERY_READY', 'Account reserved', { account_id: account.id });
     return account;
   });
 }
@@ -85,17 +87,22 @@ async function confirmPaid(invoice){
   if(!order) return { ok:false, error:'ORDER_NOT_FOUND' };
   const upd = await prisma.orders.update({ where:{ invoice }, data:{ status:'PAID', pay_ack_at: new Date() } });
   await addEvent(upd.id, 'PAY_ACK', `Order ${invoice} confirmed paid`);
+  const variant = await resolveVariantByCode(order.product_code).catch(()=>null);
+  if(order.delivery_mode==='INVITE_ONLY' || order.product.delivery_mode==='privat_invite' || order.product.delivery_mode==='canva_invite'){
+    await addEvent(order.id,'INVITE_QUEUED','Invite requested');
+    return { ok:true, order:upd };
+  }
   try {
-    await reserveAccount(order.id);
+    await reserveAccount(order.id, variant?.variant_id);
   } catch (e) {
     await prisma.orders.update({ where:{ id: order.id }, data:{ status:'REJECTED' } }).catch(()=>{});
     await sendText(order.buyer_phone, 'Stok untuk durasi ini telah habis. Silakan pilih durasi lain.');
     await addEvent(order.id, 'DELIVERY_NO_STOCK', 'Reservation failed');
     return { ok:false, error:'OUT_OF_STOCK' };
   }
-  if(order.product.delivery_mode==='privat_invite'){ await prisma.tasks.create({ data:{ order_id: order.id, kind:'INVITE_CHATGPT', due_at: new Date(Date.now()+15*60*1000) } }); await addEvent(order.id,'INVITE_QUEUED','Invite task created',{ kind:'INVITE_CHATGPT' }); }
-  else if(order.product.delivery_mode==='canva_invite'){ await prisma.tasks.create({ data:{ order_id: order.id, kind:'INVITE_CANVA', due_at: new Date(Date.now()+15*60*1000) } }); await addEvent(order.id,'INVITE_QUEUED','Invite task created',{ kind:'INVITE_CANVA' }); }
-  else { await addEvent(order.id, 'DELIVERY_READY', 'Ready to deliver account'); }
+  const now = new Date();
+  const expire = variant ? new Date(now.getTime() + variant.duration_days*86400000) : null;
+  await prisma.orders.update({ where:{ id: order.id }, data:{ fulfilled_at: now, expires_at: expire, status:'DELIVERED' } });
   return { ok:true, order:upd };
 }
 
