@@ -32,8 +32,8 @@ async function upsertAccountFromSheet(payload){
     password: payload.password,
     profile_index: payload.profile_index || null,
     max_usage: payload.max_usage ?? undefined,
-    fifo_order: nowBig,
   };
+  if (payload.reorder === true) updateData.fifo_order = nowBig;
   if(payload.deleted){
     updateData.status = 'DISABLED';
   } else if(existing && existing.status !== 'AVAILABLE'){

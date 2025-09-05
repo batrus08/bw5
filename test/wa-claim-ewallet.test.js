@@ -11,8 +11,8 @@ const tgPath = require.resolve('../src/services/telegram');
 const messages = [];
 const ewalletCalls = [];
 require.cache[waPath] = { exports: {
-  sendText: async (...args) => { messages.push(args); },
-  sendInteractiveButtons: async () => {},
+  sendText: async (...args) => { messages.push({ type:'text', args }); },
+  sendInteractiveButtons: async (...args) => { messages.push({ type:'buttons', args }); },
   sendListMenu: async () => {},
 } };
 require.cache[claimSvcPath] = { exports: {
@@ -55,6 +55,7 @@ test('claim approval asks for ewallet and stores number', async () => {
   assert.strictEqual(ewalletCalls.length,1);
   assert.strictEqual(ewalletCalls[0].ew,'081234567890');
   assert.strictEqual(messages.length,2);
-  assert.strictEqual(messages[1][1],'Nomor ShopeePay diterima: 081234567890. Refund diproses maksimal 2×24 jam.');
+  assert.strictEqual(messages[1].type,'buttons');
+  assert.strictEqual(messages[1].args[1],'Nomor ShopeePay diterima: 081234567890. Refund diproses maksimal 2×24 jam.');
   await new Promise(r=>server.close(r));
 });

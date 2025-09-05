@@ -20,6 +20,7 @@ Backend Express + Prisma untuk Telegram dan WhatsApp.
    PAYMENT_QRIS_TEXT=Silakan bayar
    N8N_BASE_URL=https://n8n.example/webhook/bw5
    N8N_TOKEN=supersecret
+   SHEET_SYNC_SECRET=sharedsecret
    ```
    Variabel `WA_*` digunakan untuk pengiriman pesan WhatsApp, `SHEET_*` untuk sinkronisasi spreadsheet, sedangkan `N8N_*` adalah token internal untuk bridge n8n.
 2. Siapkan database PostgreSQL:
@@ -44,6 +45,7 @@ Backend Express + Prisma untuk Telegram dan WhatsApp.
    - `/stock/options?productId=PROD` → stok durasi per produk
    - `/webhook/telegram/:secret`
    - `/webhook/wa`
+   - `/api/variants-sync`
 
    Contoh mengambil stok:
    ```bash
@@ -147,6 +149,32 @@ Contoh payload yang dikirim ke `/tx-append`:
   "account_id": 1,
   "channel": "WA"
 }
+```
+
+## Kontrol Kode push
+
+Master varian dapat dipush langsung dari spreadsheet tanpa seed manual.
+
+Endpoint:
+
+- `POST /api/variants-sync` dengan HMAC `x-signature` menggunakan `SHEET_SYNC_SECRET`.
+
+Contoh payload:
+
+```json
+{
+  "product": "CGPT-SHARE",
+  "type": "sharing",
+  "duration_days": 30,
+  "code": "CGPT-SHARE-30",
+  "active": true
+}
+```
+
+Respons:
+
+```json
+{ "ok": true, "variant_id": "uuid" }
 ```
 
 ## Telegram Webhook

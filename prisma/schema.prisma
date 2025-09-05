@@ -183,6 +183,7 @@ model orders {
   email           String?
   account_id      Int?
   pay_ack_at      DateTime?
+  tnc_ack_at      DateTime?
   fulfilled_at    DateTime?
   expires_at      DateTime?
   proof_id        String?
