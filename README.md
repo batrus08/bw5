@@ -13,6 +13,7 @@ Backend Express + Prisma untuk Telegram dan WhatsApp.
    DATABASE_URL=postgresql://bw5user:password@localhost:5432/bw5db?schema=public
    TELEGRAM_BOT_TOKEN=123456:ABCDEF
    ADMIN_CHAT_ID=1696238182
+   ADMIN_API_TOKEN=supersecret
    WEBHOOK_SECRET_PATH=secret123
    PUBLIC_URL=https://yourdomain.com
    WA_ACCESS_TOKEN=EAA...
@@ -22,7 +23,7 @@ Backend Express + Prisma untuk Telegram dan WhatsApp.
    N8N_TOKEN=supersecret
    SHEET_SYNC_SECRET=sharedsecret
    ```
-   Variabel `WA_*` digunakan untuk pengiriman pesan WhatsApp, `SHEET_*` untuk sinkronisasi spreadsheet, sedangkan `N8N_*` adalah token internal untuk bridge n8n.
+   Variabel `ADMIN_API_TOKEN` dipakai sebagai header `x-admin-token` untuk mengakses endpoint stok. Variabel `WA_*` digunakan untuk pengiriman pesan WhatsApp, `SHEET_*` untuk sinkronisasi spreadsheet, sedangkan `N8N_*` adalah token internal untuk bridge n8n.
 2. Siapkan database PostgreSQL:
    ```bash
    createuser -P bw5user
