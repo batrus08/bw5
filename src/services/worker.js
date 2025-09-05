@@ -4,6 +4,7 @@ const { SHEET_POLL_MS, PAYMENT_DEADLINE_MIN } = require('../config/env');
 const { syncAccountsFromCSV } = require('./sheet');
 const { notifyAdmin, notifyCritical, tgCall } = require('./telegram');
 const { waCall } = require('./wa');
+const { sendToN8N } = require('../utils/n8n');
 
 function minutes(n){ return n*60*1000; }
 
@@ -79,6 +80,7 @@ async function retryDeadLetters(){
     try {
       if (d.channel === 'TELEGRAM') await tgCall(d.endpoint || 'sendMessage', d.payload);
       else if (d.channel === 'WHATSAPP') await waCall(d.endpoint || 'messages', d.payload);
+      else if (d.channel === 'N8N') await sendToN8N(d.endpoint || '', d.payload);
       await prisma.deadletters.delete({ where:{ id: d.id } });
     } catch (e) {
       await prisma.deadletters.update({
