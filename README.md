@@ -36,8 +36,14 @@ Backend Express + Prisma untuk Telegram dan WhatsApp.
    Endpoint yang tersedia:
    - `/healthz` → cek DB
    - `/status` → ringkasan produk/akun/order
+   - `/stock/options?productId=PROD` → stok durasi per produk
    - `/webhook/telegram/:secret`
    - `/webhook/wa`
+
+   Contoh mengambil stok:
+   ```bash
+   curl "https://yourdomain.com/stock/options?productId=CHATGPT"
+   ```
 
 ## Telegram Webhook
 Pastikan domain sudah HTTPS, kemudian set webhook:
