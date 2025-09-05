@@ -29,7 +29,7 @@ router.post('/variants-sync', express.json({ type: 'application/json' }), async 
   });
   const parsed = schema.safeParse(req.body);
   if(!parsed.success){
-    return res.status(400).json({ ok:false, error:'VALIDATION_ERROR' });
+    return res.status(400).json({ ok:false, error:'VALIDATION_ERROR', details: parsed.error.issues });
   }
   try {
     const variant_id = await upsertVariantFromSheetRow(parsed.data);

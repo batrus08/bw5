@@ -62,6 +62,7 @@ async function rejectPreapproval(invoice, note){
 
 async function reserveAccount(orderId, variant_id){
   return await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM orders WHERE id=${orderId} FOR UPDATE`;
     const order = await tx.orders.findUnique({ where:{ id: orderId } });
     if(!order) throw new Error('ORDER_NOT_FOUND');
     const [account] = await tx.$queryRaw`SELECT id, used_count, max_usage FROM accounts
@@ -114,7 +115,7 @@ async function confirmPaid(invoice){
   let accountId;
   try {
     ({ accountId } = await reserveAccount(order.id, variant?.variant_id));
-    await addEvent(order.id,'DELIVERY_READY','Account reserved',{ account_id: accountId });
+    await addEvent(order.id,'DELIVERY_READY','Account reserved',{ account_id: accountId }, 'SYSTEM', 'system', 'reserve:'+order.id);
   } catch (e) {
     await prisma.orders.update({ where:{ id: order.id }, data:{ status:'REJECTED' } }).catch(()=>{});
     await sendText(order.buyer_phone, 'Stok untuk durasi ini telah habis. Silakan pilih durasi lain.');
