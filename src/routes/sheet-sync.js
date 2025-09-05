@@ -53,7 +53,9 @@ async function upsertAccountFromSheet(payload){
 router.post('/sheet-sync', express.json({ type:'application/json' }), async (req, res) => {
   const sig = req.get('x-signature');
   const expected = crypto.createHmac('sha256', SHEET_SECRET).update(req.rawBody).digest('hex');
-  if(!sig || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))){
+  if (!sig || typeof sig !== 'string' || sig.length !== expected.length ||
+      !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+    await addEvent(null, 'SHEET_SYNC_INVALID_SIG', 'invalid signature', { ip: req.ip, route: req.path });
     return res.sendStatus(403);
   }
   const key = `sync:${req.ip}:${req.path}`;

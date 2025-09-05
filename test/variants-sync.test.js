@@ -70,3 +70,17 @@ test('variants-sync invalid payload returns details', async () => {
   assert.ok(data.details.find(d=>d.path.join('.')==='type'));
   await new Promise(r=>server.close(r));
 });
+
+test('variants-sync short signature returns 403', async () => {
+  const app = startApp();
+  const server = app.listen(0); const port = server.address().port;
+  const payload = { product:'Netflix', type:'1P1U', duration_days:30, code:'NET-1P1U-30' };
+  const body = JSON.stringify(payload);
+  const res = await fetch(`http://127.0.0.1:${port}/api/variants-sync`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-signature':'deadbeef'},
+    body
+  });
+  assert.strictEqual(res.status,403);
+  await new Promise(r=>server.close(r));
+});

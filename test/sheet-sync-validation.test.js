@@ -5,6 +5,9 @@ const crypto = require('crypto');
 
 process.env.SHEET_SYNC_SECRET = 'secret';
 
+const eventPath = require.resolve('../src/services/events');
+require.cache[eventPath] = { exports:{ addEvent: async ()=>{} } };
+
 const route = require('../src/routes/sheet-sync');
 
 function startApp(){
@@ -39,5 +42,18 @@ test('sheet-sync requires natural_key when username empty', async () => {
   const data = await res.json();
   assert.strictEqual(data.error,'VALIDATION_ERROR');
   assert.ok(data.details.find(d=>d.path.join('.')==='natural_key'));
+  await new Promise(r=>server.close(r));
+});
+
+test('sheet-sync short signature returns 403', async () => {
+  const app = startApp();
+  const server = app.listen(0); const port = server.address().port;
+  const body = JSON.stringify({ code:'C', username:'u', password:'p' });
+  const res = await fetch(`http://127.0.0.1:${port}/api/sheet-sync`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-signature':'deadbeef'},
+    body
+  });
+  assert.strictEqual(res.status,403);
   await new Promise(r=>server.close(r));
 });
