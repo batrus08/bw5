@@ -88,6 +88,14 @@ enum Channel {
   N8N
 }
 
+enum ClaimStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  AWAITING_REFUND
+  REFUNDED
+}
+
 enum PreapprovalStatus {
   PENDING
   APPROVED
@@ -195,6 +203,28 @@ model preapprovalrequests {
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+}
+
+model warrantyclaims {
+  id          BigInt     @id @default(autoincrement())
+  order_id    BigInt     @unique
+  status      ClaimStatus @default(PENDING)
+  reason      String?
+  refund_cents Int?
+  ewallet     String?
+  created_at  DateTime   @default(now())
+  updated_at  DateTime   @updatedAt
+
+  order orders @relation(fields: [order_id], references: [id], onUpdate: Cascade, onDelete: Cascade)
+}
+
+model stockalerts {
+  id           Int      @id @default(autoincrement())
+  product_code String   @unique
+  in_stock     Boolean  @default(true)
+  updated_at   DateTime @updatedAt
+
+  product products @relation(fields: [product_code], references: [code], onUpdate: Cascade, onDelete: Cascade)
 }
 
 model events {

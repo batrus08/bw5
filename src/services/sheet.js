@@ -52,8 +52,16 @@ async function syncAccountsFromCSV(){
       });
       upserts++;
     }
-    await prisma.events.create({ data:{ kind:'SHEET_SYNC_OK', actor:'SYSTEM', source:'sheet', meta:{ upserts } } });
-    return { ok:true, upserts };
+    // also sync subproduct configs for approval settings
+    const subUpserts = await upsertSubproductConfigs(rows.map(r=>({
+      product_code: r.product_code,
+      variant: r.variant,
+      duration_days: r.duration_days,
+      approval_required: r.approval_required,
+      approval_notes_default: r.approval_notes_default,
+    })));
+    await prisma.events.create({ data:{ kind:'SHEET_SYNC_OK', actor:'SYSTEM', source:'sheet', meta:{ upserts, subUpserts } } });
+    return { ok:true, upserts, subUpserts };
   }catch(e){
     await prisma.events.create({ data:{ kind:'SHEET_SYNC_FAIL', actor:'SYSTEM', source:'sheet', meta:{ error:e.message } } });
     await notifyCritical(`Sheet sync FAIL: <code>${e.message}</code>`);

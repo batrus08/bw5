@@ -15,8 +15,13 @@ Backend Express + Prisma untuk Telegram dan WhatsApp.
    ADMIN_CHAT_ID=1696238182
    WEBHOOK_SECRET_PATH=secret123
    PUBLIC_URL=https://yourdomain.com
+   WA_ACCESS_TOKEN=EAA...
+   WA_PHONE_NUMBER_ID=123456789
+   PAYMENT_QRIS_TEXT=Silakan bayar
+   N8N_BASE_URL=https://n8n.example/webhook/bw5
+   N8N_TOKEN=supersecret
    ```
-   Variabel lain seperti `WA_*` dan `SHEET_*` bersifat opsional.
+   Variabel `WA_*` digunakan untuk pengiriman pesan WhatsApp, `SHEET_*` untuk sinkronisasi spreadsheet, sedangkan `N8N_*` adalah token internal untuk bridge n8n.
 2. Siapkan database PostgreSQL:
    ```bash
    createuser -P bw5user
@@ -71,12 +76,20 @@ Contoh payload yang dikirim:
 }
 ```
 
+Event lain yang mungkin diterima:
+
+```json
+{ "product_code": "CHATGPT", "status": "OUT_OF_STOCK" }
+```
+
 ## Telegram Webhook
 Pastikan domain sudah HTTPS, kemudian set webhook:
 ```bash
 curl -F "url=https://YOUR_DOMAIN/webhook/telegram/$WEBHOOK_SECRET_PATH" \
   https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook
 ```
+
+Webhook WhatsApp memerlukan path `/webhook/wa`.
 
 ## Nginx + SSL
 Contoh konfigurasi `/etc/nginx/sites-available/bot.conf`:
@@ -108,3 +121,18 @@ pm2 startup   # jalankan perintah yang muncul
 ## Catatan
 - Worker hanya berjalan jika tabel `orders` tersedia sehingga log tidak spam saat DB kosong.
 - Set `MIGRATE_ON_BOOT=true` bila ingin Prisma migrate otomatis saat start.
+
+## Diagram Alur Pre-Approval
+
+```mermaid
+sequenceDiagram
+  participant WA as Pembeli WA
+  participant API as Backend
+  participant ADM as Admin TG
+
+  WA->>API: Order
+  API-->>WA: Menunggu approval
+  API-->>ADM: Notifikasi pre-approval
+  ADM->>API: Approve/Reject
+  API-->>WA: Kirim invoice atau penolakan
+```
