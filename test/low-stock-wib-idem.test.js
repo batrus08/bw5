@@ -39,9 +39,11 @@ test('lowStockAlert idempotent per WIB hour', async () => {
     setTime('2025-09-05T08:59:30+07:00');
     await lowStockAlert();
     assert.strictEqual(events.length,1);
+    assert.strictEqual(events[0].idem,'lowstock:NET-1P1U-30:2025090508');
     setTime('2025-09-05T09:00:05+07:00');
     await lowStockAlert();
     assert.strictEqual(events.length,2);
+    assert.strictEqual(events[1].idem,'lowstock:NET-1P1U-30:2025090509');
     setTime('2025-09-05T09:00:20+07:00');
     await lowStockAlert();
     assert.strictEqual(events.length,2);

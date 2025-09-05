@@ -89,8 +89,14 @@ async function setPayAck(invoice){
 async function confirmPaid(invoice){
   const order = await prisma.orders.findUnique({ where:{ invoice }, include:{ product:true, account:true } });
   if(!order) return { ok:false, error:'ORDER_NOT_FOUND' };
-  const upd = await prisma.orders.update({ where:{ invoice }, data:{ status:'PAID', pay_ack_at: new Date() } });
-  await addEvent(upd.id, 'PAY_ACK', `Order ${invoice} confirmed paid`);
+  if(order.status === 'DELIVERED' || order.fulfilled_at != null){
+    return { ok:true, order };
+  }
+  let upd = order;
+  if(order.status !== 'PAID' && order.status !== 'DELIVERED'){
+    upd = await prisma.orders.update({ where:{ invoice }, data:{ status:'PAID', pay_ack_at: new Date() } });
+    await addEvent(order.id, 'PAY_ACK', `Order ${invoice} confirmed paid`);
+  }
   let variant = null;
   if(order.metadata?.code){
     variant = await resolveVariantByCode(order.metadata.code).catch(()=>null);
@@ -99,7 +105,11 @@ async function confirmPaid(invoice){
     await addEvent(order.id,'INVITE_QUEUED','Invite requested');
     const kind = order.product.delivery_mode==='canva_invite' ? 'INVITE_CANVA' : 'INVITE_CHATGPT';
     await prisma.tasks.create({ data:{ order_id: order.id, kind } }).catch(()=>{});
-    return { ok:true, order:upd };
+    return { ok:true, order: upd };
+  }
+  const idem = order.idempotency_key || `deliver:${invoice}`;
+  if(order.status === 'DELIVERED' || order.idempotency_key?.startsWith('deliver:')){
+    return { ok:true, order };
   }
   let accountId;
   try {
@@ -114,10 +124,9 @@ async function confirmPaid(invoice){
   const now = new Date();
   const durationDays = variant?.duration_days ?? (order.product.duration_months ? order.product.duration_months*30 : null);
   const expire = durationDays ? new Date(now.getTime() + durationDays*86400000) : null;
-  const idem = order.idempotency_key || `deliver:${invoice}`;
   await prisma.orders.update({ where:{ id: order.id }, data:{ fulfilled_at: now, expires_at: expire, status:'DELIVERED', idempotency_key: idem } });
   await addEvent(order.id,'CREDENTIALS_SENT','Credentials sent',{ account_id: accountId },'SYSTEM','system', idem);
-  return { ok:true, order:upd };
+  return { ok:true, order: upd };
 }
 
 async function rejectOrder(invoice, reason='Rejected'){
