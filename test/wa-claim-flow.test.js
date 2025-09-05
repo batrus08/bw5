@@ -22,6 +22,7 @@ require.cache[dbPath] = { exports: {
       if (where.invoice !== 'INV-1') return null;
       return { invoice: 'INV-1', status: 'DELIVERED', amount_cents: 10000, created_at: new Date(Date.now()-5*86400000), product:{ name:'Prod', duration_months:1 } };
     },
+    findFirst: async () => null,
   },
 } };
 

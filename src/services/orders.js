@@ -63,7 +63,11 @@ async function reserveAccount(orderId, variant_id){
   return await prisma.$transaction(async (tx) => {
     const order = await tx.orders.findUnique({ where:{ id: orderId } });
     if(!order) throw new Error('ORDER_NOT_FOUND');
-    const [account] = await tx.$queryRaw`SELECT id, used_count, max_usage FROM accounts WHERE variant_id=${variant_id} AND status='AVAILABLE' AND used_count < max_usage ORDER BY fifo_order ASC, id ASC FOR UPDATE SKIP LOCKED LIMIT 1`;
+    const [account] = await tx.$queryRaw`SELECT id, used_count, max_usage FROM accounts
+      WHERE (variant_id = ${variant_id} OR (${variant_id} IS NULL AND product_code = ${order.product_code}))
+        AND status='AVAILABLE' AND used_count < max_usage
+      ORDER BY fifo_order ASC, id ASC
+      FOR UPDATE SKIP LOCKED LIMIT 1`;
     if(!account) throw new Error('OUT_OF_STOCK');
     const used = account.used_count + 1;
     const disable = used >= account.max_usage;
@@ -83,17 +87,26 @@ async function setPayAck(invoice){
 }
 
 async function confirmPaid(invoice){
-  const order = await prisma.orders.findUnique({ where:{ invoice }, include:{ product:true } });
+  const order = await prisma.orders.findUnique({ where:{ invoice }, include:{ product:true, account:true } });
   if(!order) return { ok:false, error:'ORDER_NOT_FOUND' };
   const upd = await prisma.orders.update({ where:{ invoice }, data:{ status:'PAID', pay_ack_at: new Date() } });
   await addEvent(upd.id, 'PAY_ACK', `Order ${invoice} confirmed paid`);
-  const variant = await resolveVariantByCode(order.product_code).catch(()=>null);
+  let variant = null;
+  if(order.metadata?.code){
+    variant = await resolveVariantByCode(order.metadata.code).catch(()=>null);
+  }
+  if(!variant && order.product_code){
+    variant = await resolveVariantByCode(order.product_code).catch(()=>null);
+  }
   if(order.delivery_mode==='INVITE_ONLY' || order.product.delivery_mode==='privat_invite' || order.product.delivery_mode==='canva_invite'){
     await addEvent(order.id,'INVITE_QUEUED','Invite requested');
+    const kind = order.product.delivery_mode==='canva_invite' ? 'INVITE_CANVA' : 'INVITE_CHATGPT';
+    await prisma.tasks.create({ data:{ order_id: order.id, kind } }).catch(()=>{});
     return { ok:true, order:upd };
   }
+  let account;
   try {
-    await reserveAccount(order.id, variant?.variant_id);
+    account = await reserveAccount(order.id, variant?.variant_id);
   } catch (e) {
     await prisma.orders.update({ where:{ id: order.id }, data:{ status:'REJECTED' } }).catch(()=>{});
     await sendText(order.buyer_phone, 'Stok untuk durasi ini telah habis. Silakan pilih durasi lain.');
@@ -101,8 +114,11 @@ async function confirmPaid(invoice){
     return { ok:false, error:'OUT_OF_STOCK' };
   }
   const now = new Date();
-  const expire = variant ? new Date(now.getTime() + variant.duration_days*86400000) : null;
-  await prisma.orders.update({ where:{ id: order.id }, data:{ fulfilled_at: now, expires_at: expire, status:'DELIVERED' } });
+  const durationDays = variant?.duration_days ?? (order.product.duration_months ? order.product.duration_months*30 : null);
+  const expire = durationDays ? new Date(now.getTime() + durationDays*86400000) : null;
+  const idem = order.idempotency_key || `deliver:${invoice}`;
+  await prisma.orders.update({ where:{ id: order.id }, data:{ fulfilled_at: now, expires_at: expire, status:'DELIVERED', idempotency_key: idem } });
+  await addEvent(order.id,'CREDENTIALS_SENT','Credentials sent',{ account_id: account.id });
   return { ok:true, order:upd };
 }
 
@@ -115,10 +131,17 @@ async function rejectOrder(invoice, reason='Rejected'){
 }
 
 async function markInvited(invoice){
-  const o = await prisma.orders.findUnique({ where:{ invoice } });
+  const o = await prisma.orders.findUnique({ where:{ invoice }, include:{ account:true, product:true } });
   if(!o) return { ok:false, error:'ORDER_NOT_FOUND' };
-  await prisma.tasks.updateMany({ where:{ order_id:o.id, status:'OPEN' }, data:{ status:'DONE' } });
-  await addEvent(o.id, 'INVITE_ADMIN_CONFIRMED', `Admin marked invited for ${invoice}`);
+  const variant = o.account ? await prisma.product_variants.findUnique({ where:{ variant_id: o.account.variant_id } }) : null;
+  const now = new Date();
+  const durationDays = variant?.duration_days ?? (o.product.duration_months ? o.product.duration_months*30 : null);
+  const expire = durationDays ? new Date(now.getTime() + durationDays*86400000) : null;
+  await prisma.$transaction([
+    prisma.orders.update({ where:{ id:o.id }, data:{ fulfilled_at: now, expires_at: expire } }),
+    prisma.tasks.updateMany({ where:{ order_id:o.id, status:'OPEN' }, data:{ status:'DONE' } }),
+  ]);
+  await addEvent(o.id, 'INVITED_DONE', `Admin marked invited for ${invoice}`);
   return { ok:true };
 }
 

@@ -1,16 +1,22 @@
 const assert = require('node:assert');
 const { test } = require('node:test');
 
+process.env.TELEGRAM_BOT_TOKEN='t';
+process.env.ADMIN_CHAT_ID='1';
+process.env.WEBHOOK_SECRET_PATH='w';
+process.env.DATABASE_URL='postgres://';
+process.env.ENCRYPTION_KEY=Buffer.alloc(32).toString('base64');
+
 const dbPath = require.resolve('../src/db/client');
 const eventPath = require.resolve('../src/services/events');
 const waPath = require.resolve('../src/services/wa');
 const variantPath = require.resolve('../src/services/variants');
 
 const store = {
-  accounts: [{ id:1, variant_id:'v1', status:'AVAILABLE', max_usage:1, used_count:0, fifo_order:1n, natural_key:'k1' }],
+  accounts: [{ id:1, variant_id:'v1', product_code:'C', status:'AVAILABLE', max_usage:1, used_count:0, fifo_order:1n, natural_key:'k1' }],
   orders: [
-    { id:1, invoice:'A', product_code:'C', buyer_phone:'1', product:{ delivery_mode:'sharing' }, delivery_mode:'USERPASS' },
-    { id:2, invoice:'B', product_code:'C', buyer_phone:'2', product:{ delivery_mode:'sharing' }, delivery_mode:'USERPASS' },
+    { id:1, invoice:'A', product_code:'C', buyer_phone:'1', product:{ delivery_mode:'sharing', duration_months:1 }, delivery_mode:'USERPASS' },
+    { id:2, invoice:'B', product_code:'C', buyer_phone:'2', product:{ delivery_mode:'sharing', duration_months:1 }, delivery_mode:'USERPASS' },
   ],
   messages: [],
 };
@@ -28,8 +34,10 @@ require.cache[dbPath] = { exports: {
       findUnique: async ({ where }) => store.orders.find(o=>o.id===where.id),
       update: async ({ where, data }) => { const o=store.orders.find(x=>x.id===where.id); Object.assign(o,data); return o; },
     },
-    $queryRaw: async (strings, variantId) => {
-      return store.accounts.filter(a=>a.variant_id===variantId && a.status==='AVAILABLE' && a.used_count<a.max_usage);
+    $queryRaw: async (strings, variantId, _v2, prodCode) => {
+      return store.accounts.filter(a=>
+        (a.variant_id===variantId || (!variantId && a.product_code===prodCode)) &&
+        a.status==='AVAILABLE' && a.used_count<a.max_usage);
     },
   }),
   orders: {
@@ -54,4 +62,16 @@ test('only one confirmation succeeds reserving stock', async () => {
   const failures = [a,b].filter(x=>!x.ok);
   assert.strictEqual(failures.length,1);
   assert.ok(store.messages[0].text.includes('Stok'));
+});
+
+test('fallback by product_code and auto-disable when max usage reached', async () => {
+  store.accounts = [{ id:2, variant_id:null, product_code:'X', status:'AVAILABLE', max_usage:1, used_count:0, fifo_order:1n, natural_key:'k2' }];
+  store.orders.push({ id:3, invoice:'C', product_code:'X', buyer_phone:'3', product:{ delivery_mode:'sharing', duration_months:1 }, delivery_mode:'USERPASS' });
+  require.cache[variantPath].exports.resolveVariantByCode = async () => null;
+  delete require.cache[require.resolve('../src/services/orders')];
+  const { confirmPaid: confirmPaid2 } = require('../src/services/orders');
+  await confirmPaid2('C');
+  const acc = store.accounts[0];
+  assert.strictEqual(acc.used_count,1);
+  assert.strictEqual(acc.status,'DISABLED');
 });

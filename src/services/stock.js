@@ -1,12 +1,20 @@
 const prisma = require('../db/client');
 
-function computeOptions(accounts) {
-  return [{ durationDays: null, stock: accounts.length }];
+async function getStockSummary(){
+  return prisma.$queryRaw`SELECT v.code, 
+    COUNT(*) FILTER (WHERE a.status='AVAILABLE' AND a.used_count < a.max_usage) AS units,
+    COALESCE(SUM(GREATEST(0, a.max_usage - a.used_count) ) FILTER (WHERE a.status='AVAILABLE'),0) AS capacity
+    FROM product_variants v
+    LEFT JOIN accounts a ON a.variant_id = v.variant_id
+    GROUP BY v.code
+    ORDER BY units ASC`;
 }
 
-async function getStockOptions(productId) {
-  const count = await prisma.accounts.count({ where: { product_code: productId, status: 'AVAILABLE' } });
-  return [{ durationDays: null, stock: count }];
+async function getStockDetail(code){
+  return prisma.$queryRaw`SELECT a.id, a.fifo_order, a.used_count, a.max_usage, a.status, a.password
+    FROM accounts a JOIN product_variants v ON a.variant_id = v.variant_id
+    WHERE v.code = ${code}
+    ORDER BY a.fifo_order ASC, a.id ASC`;
 }
 
-module.exports = { computeOptions, getStockOptions };
+module.exports = { getStockSummary, getStockDetail };
