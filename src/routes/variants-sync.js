@@ -4,6 +4,7 @@ const { upsertVariantFromSheetRow } = require('../services/variants');
 const { addEvent } = require('../services/events');
 const { allow } = require('../utils/rateLimit');
 const { SHEET_SYNC_SECRET } = require('../config/env');
+const { z } = require('zod');
 
 const SHEET_SECRET = SHEET_SYNC_SECRET || 'secret';
 const router = express.Router();
@@ -19,8 +20,19 @@ router.post('/variants-sync', express.json({ type: 'application/json' }), async 
     await addEvent(null,'RATE_LIMITED_SYNC','rate limited',{ ip:req.ip, route:req.path });
     return res.status(429).json({ ok:false });
   }
+  const schema = z.object({
+    product: z.string(),
+    type: z.string(),
+    duration_days: z.number().int().min(1),
+    code: z.string(),
+    active: z.boolean().optional(),
+  });
+  const parsed = schema.safeParse(req.body);
+  if(!parsed.success){
+    return res.status(400).json({ ok:false, error:'VALIDATION_ERROR' });
+  }
   try {
-    const variant_id = await upsertVariantFromSheetRow(req.body);
+    const variant_id = await upsertVariantFromSheetRow(parsed.data);
     res.json({ ok: true, variant_id });
   } catch (e) {
     await addEvent(null, 'VARIANT_SYNC_FAIL', e.message);

@@ -74,8 +74,7 @@ async function reserveAccount(orderId, variant_id){
     const disable = used >= account.max_usage;
     await tx.accounts.update({ where:{ id: account.id }, data:{ used_count: used, status: disable ? 'DISABLED' : 'AVAILABLE' } });
     await tx.orders.update({ where:{ id: order.id }, data:{ account_id: account.id } });
-    await addEvent(order.id, 'DELIVERY_READY', 'Account reserved', { account_id: account.id });
-    return account;
+    return { accountId: account.id };
   });
 }
 
@@ -102,9 +101,10 @@ async function confirmPaid(invoice){
     await prisma.tasks.create({ data:{ order_id: order.id, kind } }).catch(()=>{});
     return { ok:true, order:upd };
   }
-  let account;
+  let accountId;
   try {
-    account = await reserveAccount(order.id, variant?.variant_id);
+    ({ accountId } = await reserveAccount(order.id, variant?.variant_id));
+    await addEvent(order.id,'DELIVERY_READY','Account reserved',{ account_id: accountId });
   } catch (e) {
     await prisma.orders.update({ where:{ id: order.id }, data:{ status:'REJECTED' } }).catch(()=>{});
     await sendText(order.buyer_phone, 'Stok untuk durasi ini telah habis. Silakan pilih durasi lain.');
@@ -116,7 +116,7 @@ async function confirmPaid(invoice){
   const expire = durationDays ? new Date(now.getTime() + durationDays*86400000) : null;
   const idem = order.idempotency_key || `deliver:${invoice}`;
   await prisma.orders.update({ where:{ id: order.id }, data:{ fulfilled_at: now, expires_at: expire, status:'DELIVERED', idempotency_key: idem } });
-  await addEvent(order.id,'CREDENTIALS_SENT','Credentials sent',{ account_id: account.id },'SYSTEM','system', idem);
+  await addEvent(order.id,'CREDENTIALS_SENT','Credentials sent',{ account_id: accountId },'SYSTEM','system', idem);
   return { ok:true, order:upd };
 }
 
