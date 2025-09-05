@@ -21,15 +21,12 @@ app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(compression());
 app.use(requestLogger());
 
-// WA webhook needs rawBody for signature verify
-app.use('/webhook/wa', express.json({
+// Parse JSON and keep raw body for HMAC verification on WhatsApp webhook
+app.use(express.json({
   limit: '512kb',
-  verify: (req, res, buf) => { req.rawBody = buf; },
   type: ['application/json', 'application/*+json'],
-}), waWebhook);
-
-// general JSON
-app.use(express.json({ limit: '512kb', strict: true }));
+  verify: (req, _res, buf) => { req.rawBody = buf; },
+}));
 
 // CORS
 app.use((req, res, next) => {
@@ -43,6 +40,7 @@ app.use((req, res, next) => {
 app.use('/healthz', health);
 app.use('/status', status);
 app.use('/stock', stock);
+app.use('/webhook/wa', waWebhook);
 
 const tgPath = process.env.WEBHOOK_SECRET_PATH ? `/webhook/telegram/${process.env.WEBHOOK_SECRET_PATH}` : '/webhook/telegram';
 app.use(tgPath, telegramWebhook);

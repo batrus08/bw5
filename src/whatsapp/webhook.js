@@ -23,10 +23,17 @@ router.get('/', (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const sig = req.get('X-Hub-Signature-256');
-    if (WA_APP_SECRET && sig && req.rawBody) {
+    if (WA_APP_SECRET) {
+      if (!sig || !req.rawBody) {
+        await addEvent(null, 'WA_INVALID_SIGNATURE', 'missing signature', {}, 'SYSTEM', 'wa');
+        return res.sendStatus(403);
+      }
       const expected = 'sha256=' + crypto.createHmac('sha256', WA_APP_SECRET).update(req.rawBody).digest('hex');
       const valid = typeof sig === 'string' && sig.length === expected.length && crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
-      if (!valid) { await addEvent(null, 'WA_INVALID_SIGNATURE', 'bad signature', {}, 'SYSTEM', 'wa'); return res.sendStatus(403); }
+      if (!valid) {
+        await addEvent(null, 'WA_INVALID_SIGNATURE', 'bad signature', {}, 'SYSTEM', 'wa');
+        return res.sendStatus(403);
+      }
     }
 
     const entry = req.body?.entry?.[0]?.changes?.[0]?.value;
