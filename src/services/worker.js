@@ -3,6 +3,7 @@ const prisma = require('../db/client');
 const { SHEET_POLL_MS, PAYMENT_DEADLINE_MIN } = require('../config/env');
 const { syncAccountsFromCSV } = require('./sheet');
 const { notifyAdmin, notifyCritical, tgCall } = require('./telegram');
+const { addEvent } = require('./events');
 const { emitToN8N } = require('../utils/n8n');
 const { waCall } = require('./wa');
 const { sendToN8N } = require('../utils/n8n');
@@ -118,6 +119,25 @@ async function stockTransitions(){
   }
 }
 
+async function getExpiryReminderCandidates(){
+  return prisma.$queryRaw`SELECT id, invoice, product_code, expires_at FROM orders WHERE status='DELIVERED' AND (DATE(expires_at) - CURRENT_DATE) IN (3,1,0)`;
+}
+
+let lastReminderDate = null;
+async function expiryReminderJob(){
+  const nowJakarta = new Date(new Date().toLocaleString('en-US',{ timeZone:'Asia/Jakarta' }));
+  if(nowJakarta.getHours() !== 9) return;
+  const dateStr = nowJakarta.toISOString().slice(0,10);
+  if(lastReminderDate === dateStr) return;
+  lastReminderDate = dateStr;
+  const list = await getExpiryReminderCandidates();
+  for(const o of list){
+    const key = `expiry:${o.invoice}:${dateStr.replace(/-/g,'')}`;
+    await addEvent(o.id,'EXPIRY_REMINDER_SENT','Expiry reminder',{ expires_at:o.expires_at },'SYSTEM','worker', key);
+    await notifyAdmin(`⌛️ ${o.invoice} ${o.product_code} exp ${new Date(o.expires_at).toLocaleString('en-US',{ timeZone:'Asia/Jakarta' })}`);
+  }
+}
+
 async function startWorkers(){
   try {
     await prisma.orders.findFirst({ select:{ id:true }, take:1 });
@@ -130,8 +150,9 @@ async function startWorkers(){
   setInterval(wrap(checkStockAndPause,'checkStockAndPause'), minutes(5));
   setInterval(wrap(retryDeadLetters,'retryDeadLetters'), minutes(1));
   setInterval(wrap(stockTransitions,'stockTransitions'), minutes(5));
+  setInterval(wrap(expiryReminderJob,'expiryReminderJob'), minutes(1));
   if(SHEET_POLL_MS>0){ setInterval(wrap(syncAccountsFromCSV,'syncAccountsFromCSV'), SHEET_POLL_MS); }
   console.log('Workers started.');
 }
 
-module.exports = { startWorkers, stockTransitions, detectTransition };
+module.exports = { startWorkers, stockTransitions, detectTransition, getExpiryReminderCandidates };

@@ -1,17 +1,25 @@
 const express = require('express');
-const { getStockOptions } = require('../services/stock');
+const { getStockSummary, getStockDetail } = require('../services/stock');
 
 const router = express.Router();
 
-router.get('/options', async (req, res) => {
-  const { productId } = req.query;
-  if (!productId) return res.status(400).json({ ok: false, error: 'MISSING_PRODUCT_ID' });
+router.get('/', async (_req, res) => {
   try {
-    const opts = await getStockOptions(productId);
-    res.json(opts);
-  } catch (err) {
-    console.error('stock options error', err);
-    res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' });
+    const sum = await getStockSummary();
+    res.json(sum);
+  } catch (e) {
+    console.error('stock summary error', e);
+    res.status(500).json({ ok:false });
+  }
+});
+
+router.get('/:code', async (req, res) => {
+  try {
+    const detail = await getStockDetail(req.params.code);
+    res.json(detail);
+  } catch (e) {
+    console.error('stock detail error', e);
+    res.status(500).json({ ok:false });
   }
 });
 

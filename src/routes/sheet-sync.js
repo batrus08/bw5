@@ -3,8 +3,9 @@ const crypto = require('crypto');
 const prisma = require('../db/client');
 const { resolveVariantByCode } = require('../services/variants');
 const { addEvent } = require('../services/events');
+const { SHEET_SYNC_SECRET } = require('../config/env');
 
-const SHEET_SECRET = process.env.SHEET_SYNC_SECRET || 'secret';
+const SHEET_SECRET = SHEET_SYNC_SECRET || 'secret';
 const router = express.Router();
 
 function buildNaturalKey({ code, username, profile_index }){
@@ -14,6 +15,7 @@ function buildNaturalKey({ code, username, profile_index }){
 async function upsertAccountFromSheet(payload){
   const variant = await resolveVariantByCode(payload.code);
   const natural_key = payload.natural_key || buildNaturalKey(payload);
+  const existing = await prisma.accounts.findUnique({ where:{ natural_key } }).catch(()=>null);
   const nowBig = BigInt(Date.now());
   const data = {
     product_code: variant.product,
@@ -34,6 +36,8 @@ async function upsertAccountFromSheet(payload){
   };
   if(payload.deleted){
     updateData.status = 'DISABLED';
+  } else if(existing && existing.status !== 'AVAILABLE'){
+    updateData.status = existing.status;
   }
   const account = await prisma.accounts.upsert({
     where:{ natural_key },

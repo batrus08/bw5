@@ -3,7 +3,8 @@ const express = require('express');
 const router = express.Router();
 const prisma = require('../db/client');
 const { ADMIN_CHAT_ID } = require('../config/env');
-const { confirmPaid, rejectOrder, markInvited } = require('../services/orders');
+const { confirmPaid, rejectOrder, markInvited, resume, skipStage, cancel } = require('../services/orders');
+const { getStockSummary, getStockDetail } = require('../services/stock');
 const { sendMessage, answerCallbackQuery, buildOrderKeyboard, notifyAdmin, buildNumberGrid, buildGrid } = require('../services/telegram');
 
 router.get('/', (_req, res) => res.sendStatus(200));
@@ -44,6 +45,27 @@ router.post('/', async (req, res) => {
         const invoice = data.split(':')[1];
         await answerCallbackQuery(update.callback_query.id, '🔁 Request sent');
         await sendMessage(chatId, `🔁 Request new proof for ${invoice}`);
+      } else if (data.startsWith('HELP_RESUME:')) {
+        const id = BigInt(data.split(':')[1]);
+        await resume(id);
+        await answerCallbackQuery(update.callback_query.id, '▶️ Resumed');
+        await sendMessage(chatId, `▶️ Resume order ${id}`);
+      } else if (data.startsWith('HELP_SKIP:')) {
+        const [, orderId, nextStatus] = data.split(':');
+        await skipStage(BigInt(orderId), nextStatus);
+        await answerCallbackQuery(update.callback_query.id, '⏭ Skipped');
+        await sendMessage(chatId, `⏭ Skip ${orderId} to ${nextStatus}`);
+      } else if (data.startsWith('HELP_CANCEL:')) {
+        const id = BigInt(data.split(':')[1]);
+        await cancel(id);
+        await answerCallbackQuery(update.callback_query.id, '❌ Cancelled');
+        await sendMessage(chatId, `❌ Cancelled ${id}`);
+      } else if (data.startsWith('STOCK_DETAIL:')) {
+        const code = data.split(':')[1];
+        const detail = await getStockDetail(code);
+        const lines = detail.map(a=>`${a.id} ${a.fifo_order} ${a.used_count}/${a.max_usage} ${a.status}`).join('\n') || 'empty';
+        await answerCallbackQuery(update.callback_query.id);
+        await sendMessage(chatId, `<b>${code}</b>\n${lines}`, { parse_mode:'HTML' });
       } else if (data.startsWith('resend:')) {
         const invoice = data.split(':')[1];
         const order = await prisma.orders.findUnique({ where:{ invoice } });
@@ -89,6 +111,7 @@ router.post('/', async (req, res) => {
       else if(text === '/off'){ await prisma.settings.upsert({ where:{ key:'bot_enabled' }, update:{ value:'false' }, create:{ key:'bot_enabled', value:'false' } }); await sendMessage(chatId,'⛔️ Bot OFF'); }
       else if(text === '/sheet_sync'){ const { syncAccountsFromCSV } = require('../services/sheet'); const r = await syncAccountsFromCSV(); await sendMessage(chatId, r.ok?`Sheet sync OK (upserts: ${r.upserts})`:`Sheet sync fail: ${r.error||r.reason}`); }
       else if(text.startsWith('/confirm ')){ const inv=text.split(' ')[1]; const r=await confirmPaid(inv); await sendMessage(chatId, r.ok?`✅ Confirmed ${inv}`:`❌ ${r.error}`); }
+      else if(text === '/stock' || text.toLowerCase()==='cek stok'){ const sum=await getStockSummary(); const lines=sum.map(s=>`${s.code}: ${s.units}/${s.capacity}`).join('\n'); const kb={ reply_markup:{ inline_keyboard: sum.map(s=>[{ text:s.code, callback_data:'STOCK_DETAIL:'+s.code }]) } }; await sendMessage(chatId, lines||'empty', kb); }
       else if(text.startsWith('/reject ')){ const inv=text.split(' ')[1]; const r=await rejectOrder(inv); await sendMessage(chatId, r.ok?`❌ Rejected ${inv}`:`❌ ${r.error}`); }
       else if(text === '/grid'){ const kb = buildNumberGrid(24,6,'pick'); await sendMessage(chatId,'Pilih nomor:', kb); }
       else if(text === '/produk'){ const items = await prisma.products.findMany({ where:{ is_active:true }, orderBy:{ code:'asc' } }); const kb = buildGrid(items, 3, it=>({ text: it.code, data: it.code })); await sendMessage(chatId, 'Pilih produk:', kb); }

@@ -1,6 +1,12 @@
 const assert = require('node:assert');
 const { test } = require('node:test');
 
+process.env.TELEGRAM_BOT_TOKEN='t';
+process.env.ADMIN_CHAT_ID='1';
+process.env.WEBHOOK_SECRET_PATH='w';
+process.env.DATABASE_URL='postgres://';
+process.env.ENCRYPTION_KEY=Buffer.alloc(32).toString('base64');
+
 const routePath = require.resolve('../src/routes/sheet-sync');
 const dbPath = require.resolve('../src/db/client');
 const variantPath = require.resolve('../src/services/variants');
@@ -18,7 +24,8 @@ require.cache[dbPath] = { exports: { accounts:{
     const acc = store.accounts[idx];
     Object.assign(acc, update);
     return acc;
-  }
+  },
+  findUnique: async ({ where }) => store.accounts.find(a=>a.natural_key===where.natural_key) || null,
 } } };
 
 const { upsertAccountFromSheet } = require(routePath);
@@ -37,4 +44,11 @@ test('deleted flag disables account', async () => {
   await upsertAccountFromSheet(Object.assign({}, payload, { deleted:true, username:'u2', profile_index:2 }));
   const acc = store.accounts.find(a=>a.profile_index===2);
   assert.strictEqual(acc.status,'DISABLED');
+});
+
+test('no downgrade status on update', async () => {
+  await upsertAccountFromSheet(payload);
+  store.accounts[0].status = 'RESERVED';
+  await upsertAccountFromSheet(Object.assign({}, payload, { username:'u3' }));
+  assert.strictEqual(store.accounts[0].status, 'RESERVED');
 });

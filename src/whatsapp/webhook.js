@@ -45,6 +45,11 @@ router.post('/', async (req, res) => {
       const from = m.from;
       const ok = RATE_LIMIT_PERSISTENT ? await allowPersistent(`wa:${from}`, RATE_LIMIT_WA_PER_MIN) : allow(`wa:${from}`, RATE_LIMIT_WA_PER_MIN);
       if (!ok) { await addEvent(null,'RATE_LIMITED',`wa user ${from}`,{},'SYSTEM','wa'); continue; }
+      const last = await prisma.orders.findFirst({ where:{ buyer_phone: from }, orderBy:{ created_at:'desc' } }).catch(()=>null);
+      if(last?.status==='ON_HOLD_HELP'){
+        await sendText(from,'Proses masih dijeda oleh admin.');
+        continue;
+      }
 
       if (m.type === 'text') {
         const body = (m.text?.body || '').trim();

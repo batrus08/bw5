@@ -29,6 +29,7 @@ require.cache[dbPath] = { exports: {
     findUnique: async () => ({ id:1, refund_cents:5000, order:{ buyer_phone:'1' } }),
     update: async () => ({}),
   },
+  orders: { findFirst: async () => null },
 } };
 
 const waWebhook = require('../src/whatsapp/webhook');
