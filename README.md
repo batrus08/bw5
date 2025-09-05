@@ -178,6 +178,8 @@ Respons:
 { "ok": true, "variant_id": "uuid" }
 ```
 
+Untuk sinkronisasi akun melalui `/api/sheet-sync`, sertakan `natural_key` agar idempoten. Format yang dianjurkan dari Apps Script: `<sheet>|<row>|<code>`.
+
 ## Telegram Webhook
 Pastikan domain sudah HTTPS, kemudian set webhook:
 ```bash

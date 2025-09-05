@@ -73,7 +73,10 @@ router.post('/sheet-sync', express.json({ type:'application/json' }), async (req
   });
   const parsed = schema.safeParse(req.body);
   if(!parsed.success){
-    return res.status(400).json({ ok:false, error:'VALIDATION_ERROR' });
+    return res.status(400).json({ ok:false, error:'VALIDATION_ERROR', details: parsed.error.issues });
+  }
+  if ((!parsed.data.username || parsed.data.username.trim()==='') && !parsed.data.natural_key) {
+    return res.status(400).json({ ok:false, error:'VALIDATION_ERROR', details:[{ path:['natural_key'], message:'required when username is empty' }]});
   }
   try{
     const acc = await upsertAccountFromSheet(parsed.data);

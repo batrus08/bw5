@@ -56,3 +56,17 @@ test('variants-sync HMAC & upsert', async () => {
   assert.strictEqual(store.variants[0].active, false);
   await new Promise(r=>server.close(r));
 });
+
+test('variants-sync invalid payload returns details', async () => {
+  const app = startApp();
+  const server = app.listen(0); const port = server.address().port;
+  const body = JSON.stringify({ product:'Netflix' });
+  const sig = crypto.createHmac('sha256', process.env.SHEET_SYNC_SECRET).update(body).digest('hex');
+  const res = await fetch(`http://127.0.0.1:${port}/api/variants-sync`, { method:'POST', headers:{'Content-Type':'application/json','x-signature':sig}, body });
+  assert.strictEqual(res.status,400);
+  const data = await res.json();
+  assert.strictEqual(data.error,'VALIDATION_ERROR');
+  assert.ok(Array.isArray(data.details));
+  assert.ok(data.details.find(d=>d.path.join('.')==='type'));
+  await new Promise(r=>server.close(r));
+});
