@@ -19,6 +19,7 @@ const store = {
     { id:2, invoice:'B', product_code:'C', buyer_phone:'2', product:{ delivery_mode:'sharing', duration_months:1 }, delivery_mode:'USERPASS' },
   ],
   messages: [],
+  events: [],
 };
 
 require.cache[dbPath] = { exports: {
@@ -50,7 +51,7 @@ require.cache[dbPath] = { exports: {
   tasks: { create: async ()=>{} },
 } };
 
-require.cache[eventPath] = { exports: { addEvent: async () => {} } };
+require.cache[eventPath] = { exports: { addEvent: async (...args) => { store.events.push(args); } } };
 require.cache[waPath] = { exports: { sendText: async (to,text)=>{ store.messages.push({to,text}); } } };
 require.cache[variantPath] = { exports:{ resolveVariantByCode: async () => ({ variant_id:'v1', product:'P', duration_days:30, code:'C', active:true }) } };
 
@@ -62,6 +63,8 @@ test('only one confirmation succeeds reserving stock', async () => {
   const failures = [a,b].filter(x=>!x.ok);
   assert.strictEqual(failures.length,1);
   assert.ok(store.messages[0].text.includes('Stok'));
+  const deliveryEvents = store.events.filter(e=>e[1]==='DELIVERY_READY');
+  assert.strictEqual(deliveryEvents.length,1);
 });
 
 test('fallback by product_code and auto-disable when max usage reached', async () => {

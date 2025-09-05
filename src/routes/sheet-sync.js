@@ -5,6 +5,7 @@ const { resolveVariantByCode } = require('../services/variants');
 const { addEvent } = require('../services/events');
 const { allow } = require('../utils/rateLimit');
 const { SHEET_SYNC_SECRET } = require('../config/env');
+const { z } = require('zod');
 
 const SHEET_SECRET = SHEET_SYNC_SECRET || 'secret';
 const router = express.Router();
@@ -60,8 +61,22 @@ router.post('/sheet-sync', express.json({ type:'application/json' }), async (req
     await addEvent(null,'RATE_LIMITED_SYNC','rate limited',{ ip:req.ip, route:req.path });
     return res.status(429).json({ ok:false });
   }
+  const schema = z.object({
+    code: z.string(),
+    username: z.string().optional(),
+    password: z.string().optional(),
+    max_usage: z.number().int().min(1).optional(),
+    profile_index: z.number().int().nullable().optional(),
+    deleted: z.boolean().optional(),
+    reorder: z.boolean().optional(),
+    natural_key: z.string().optional(),
+  });
+  const parsed = schema.safeParse(req.body);
+  if(!parsed.success){
+    return res.status(400).json({ ok:false, error:'VALIDATION_ERROR' });
+  }
   try{
-    const acc = await upsertAccountFromSheet(req.body);
+    const acc = await upsertAccountFromSheet(parsed.data);
     res.json({ ok:true, id: acc.id });
   }catch(e){
     await addEvent(null, 'SHEET_SYNC_FAIL', e.message);
