@@ -51,6 +51,26 @@ Jalankan seluruh tes unit:
 npm test
 ```
 
+## Integrasi n8n
+Backend dapat mengirim setiap event order ke workflow n8n sehingga otomatisasi bisa dilakukan tanpa mengubah kode.
+
+1. Buat workflow di n8n dengan trigger **Webhook**. Catat URL webhook yang dihasilkan, misal `https://n8n.example/webhook/bw5/`.
+2. Isi variabel `N8N_WEBHOOK_BASE` pada `.env` dengan URL tersebut (boleh menyertakan path tambahan, harus diakhiri `/`).
+3. Jalankan ulang server. Setiap event yang tersimpan melalui `addEvent` akan dikirim sebagai JSON ke `N8N_WEBHOOK_BASE + 'events'`.
+4. Di n8n, gunakan data JSON tersebut untuk melanjutkan otomatisasi (update spreadsheet, kirim notifikasi, dll).
+
+Contoh payload yang dikirim:
+```json
+{
+  "orderId": 1,
+  "kind": "ORDER_CREATED",
+  "message": "Order INV-123 created",
+  "meta": {},
+  "actor": "SYSTEM",
+  "source": "system"
+}
+```
+
 ## Telegram Webhook
 Pastikan domain sudah HTTPS, kemudian set webhook:
 ```bash
