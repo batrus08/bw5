@@ -23,6 +23,7 @@ enum OrderStatus {
   REFUND_REQUESTED
   REFUND_APPROVED
   REFUND_REJECTED
+  AWAITING_PREAPPROVAL
 }
 
 enum DeliveryMode {
@@ -86,6 +87,12 @@ enum Channel {
   WHATSAPP
 }
 
+enum PreapprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model products {
   code            String       @id
   name            String
@@ -99,6 +106,7 @@ model products {
 
   accounts accounts[]
   orders   orders[]
+  subconfigs subproductconfigs[]
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
@@ -131,6 +139,21 @@ model accounts {
   @@index([product_code])
 }
 
+model subproductconfigs {
+  id                   Int      @id @default(autoincrement())
+  product_code         String
+  sub_code             String
+  approval_required    Boolean  @default(false)
+  approval_notes_default String?
+
+  product products @relation(fields: [product_code], references: [code], onUpdate: Cascade, onDelete: Cascade)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([product_code, sub_code])
+}
+
 model orders {
   id              BigInt      @id @default(autoincrement())
   invoice         String      @unique
@@ -150,6 +173,7 @@ model orders {
   account accounts? @relation("OrderAccount", fields: [account_id], references: [id], onUpdate: Cascade, onDelete: SetNull)
   events  events[]
   tasks   tasks[]
+  preapproval preapprovalrequests?
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
@@ -157,6 +181,19 @@ model orders {
   @@index([status])
   @@index([product_code, created_at])
   @@index([buyer_phone])
+}
+
+model preapprovalrequests {
+  id        Int              @id @default(autoincrement())
+  order_id  BigInt           @unique
+  status    PreapprovalStatus @default(PENDING)
+  notes     String?
+  sub_code  String?
+
+  order orders @relation(fields: [order_id], references: [id], onUpdate: Cascade, onDelete: Cascade)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 }
 
 model events {

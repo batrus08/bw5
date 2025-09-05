@@ -4,11 +4,41 @@ const { addEvent } = require('./events');
 
 function toCents(n){ return Math.round(Number(n||0)); }
 
-async function createOrder({ buyer_phone, product_code, qty=1, amount_cents, email }){
+async function createOrder({ buyer_phone, product_code, qty=1, amount_cents, email, sub_code='default' }){
   const invoice = 'INV-' + Date.now();
-  const order = await prisma.orders.create({ data:{ invoice, buyer_phone, product_code, qty, amount_cents: toCents(amount_cents), status:'PENDING_PAYMENT', email } });
+  const cfg = await prisma.subproductconfigs.findUnique({ where:{ product_code_sub_code:{ product_code, sub_code } } });
+  const requiresApproval = cfg?.approval_required;
+  const status = requiresApproval ? 'AWAITING_PREAPPROVAL' : 'PENDING_PAYMENT';
+  const order = await prisma.orders.create({ data:{ invoice, buyer_phone, product_code, qty, amount_cents: toCents(amount_cents), status, email } });
   await addEvent(order.id, 'ORDER_CREATED', `Order ${invoice} created`);
+  if(requiresApproval){
+    await prisma.preapprovalrequests.create({ data:{ order_id: order.id, sub_code } });
+  }
   return order;
+}
+
+async function approvePreapproval(invoice){
+  const order = await prisma.orders.findUnique({ where:{ invoice }, include:{ preapproval:true } });
+  if(!order || !order.preapproval) return { ok:false, error:'ORDER_NOT_FOUND' };
+  await prisma.$transaction([
+    prisma.preapprovalrequests.update({ where:{ order_id: order.id }, data:{ status:'APPROVED' } }),
+    prisma.orders.update({ where:{ id: order.id }, data:{ status:'PENDING_PAYMENT' } }),
+  ]);
+  await addEvent(order.id, 'ADMIN_CONFIRM', `Order ${invoice} approved`);
+  return { ok:true };
+}
+
+async function rejectPreapproval(invoice, note){
+  const order = await prisma.orders.findUnique({ where:{ invoice }, include:{ preapproval:true } });
+  if(!order || !order.preapproval) return { ok:false, error:'ORDER_NOT_FOUND' };
+  const cfg = await prisma.subproductconfigs.findUnique({ where:{ product_code_sub_code:{ product_code: order.product_code, sub_code: order.preapproval.sub_code || 'default' } } });
+  const reason = note ?? (cfg?.approval_notes_default || '');
+  await prisma.$transaction([
+    prisma.preapprovalrequests.update({ where:{ order_id: order.id }, data:{ status:'REJECTED', notes: reason } }),
+    prisma.orders.update({ where:{ id: order.id }, data:{ status:'REJECTED' } }),
+  ]);
+  await addEvent(order.id, 'ADMIN_REJECT', `Order ${invoice} rejected: ${reason}`);
+  return { ok:true };
 }
 
 async function setPayAck(invoice){
@@ -46,4 +76,4 @@ async function markInvited(invoice){
   return { ok:true };
 }
 
-module.exports = { createOrder, setPayAck, confirmPaid, rejectOrder, markInvited };
+module.exports = { createOrder, setPayAck, confirmPaid, rejectOrder, markInvited, approvePreapproval, rejectPreapproval };
