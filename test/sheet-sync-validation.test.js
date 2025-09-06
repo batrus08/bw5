@@ -20,9 +20,9 @@ function startApp(){
 test('sheet-sync invalid payload returns details', async () => {
   const app = startApp();
   const server = app.listen(0); const port = server.address().port;
-  const body = JSON.stringify({});
+  const body = JSON.stringify({ code: 123 });
   const sig = crypto.createHmac('sha256', process.env.SHEET_SYNC_SECRET).update(body).digest('hex');
-  const res = await fetch(`http://127.0.0.1:${port}/api/sheet-sync`, { method:'POST', headers:{'Content-Type':'application/json','x-signature':sig}, body });
+  const res = await fetch(`http://127.0.0.1:${port}/api/sheet-sync`, { method:'POST', headers:{'Content-Type':'application/json','X-Hub-Signature-256':'sha256='+sig}, body });
   assert.strictEqual(res.status,400);
   const data = await res.json();
   assert.strictEqual(data.error,'VALIDATION_ERROR');
@@ -37,7 +37,7 @@ test('sheet-sync requires natural_key when username empty', async () => {
   const payload = { code:'C', username:'', password:'p' };
   const body = JSON.stringify(payload);
   const sig = crypto.createHmac('sha256', process.env.SHEET_SYNC_SECRET).update(body).digest('hex');
-  const res = await fetch(`http://127.0.0.1:${port}/api/sheet-sync`, { method:'POST', headers:{'Content-Type':'application/json','x-signature':sig}, body });
+  const res = await fetch(`http://127.0.0.1:${port}/api/sheet-sync`, { method:'POST', headers:{'Content-Type':'application/json','X-Hub-Signature-256':'sha256='+sig}, body });
   assert.strictEqual(res.status,400);
   const data = await res.json();
   assert.strictEqual(data.error,'VALIDATION_ERROR');
@@ -51,7 +51,7 @@ test('sheet-sync short signature returns 403', async () => {
   const body = JSON.stringify({ code:'C', username:'u', password:'p' });
   const res = await fetch(`http://127.0.0.1:${port}/api/sheet-sync`, {
     method:'POST',
-    headers:{'Content-Type':'application/json','x-signature':'deadbeef'},
+    headers:{'Content-Type':'application/json','X-Hub-Signature-256':'sha256=deadbeef'},
     body
   });
   assert.strictEqual(res.status,403);
