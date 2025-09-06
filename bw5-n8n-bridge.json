@@ -1,0 +1,859 @@
+{
+  "name": "BW5 Bridge: Webhooks → Telegram",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "bw5/events",
+        "httpMethod": "POST",
+        "responseMode": "lastNode"
+      },
+      "id": "1",
+      "name": "Webhook Events",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json[\"headers\"][\"x-n8n-token\"]}}",
+              "operation": "equal",
+              "value2": "={{$vars.N8N_TOKEN}}"
+            }
+          ]
+        }
+      },
+      "id": "2",
+      "name": "IF Events Token",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [200, 0]
+    },
+    {
+      "parameters": {
+        "responseCode": 401,
+        "responseData": "json",
+        "responseBody": {
+          "ok": false,
+          "error": "UNAUTHORIZED"
+        },
+        "options": {
+          "responseHeaders": {
+            "Content-Type": "application/json"
+          }
+        }
+      },
+      "id": "3",
+      "name": "Respond Events Unauthorized",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [400, 200]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "text",
+              "value": "={{`[BW5][${$json.body.kind}] ${$json.body.message}\\norderId: ${$json.body.orderId}\\nactor: ${$json.body.actor} | source: ${$json.body.source}\\nmeta: ${$json.body.meta ? JSON.stringify($json.body.meta) : '-'}`}}"
+            }
+          ]
+        },
+        "options": {
+          "keepOnlySet": true
+        }
+      },
+      "id": "4",
+      "name": "Set Events Message",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [400, 0]
+    },
+    {
+      "parameters": {
+        "url": "https://api.telegram.org/bot{{$vars.TELEGRAM_BOT_TOKEN}}/sendMessage",
+        "jsonParameters": true,
+        "options": {
+          "timeout": 15000,
+          "retryOnFail": true,
+          "maxRetries": 2
+        },
+        "method": "POST",
+        "bodyParametersJson": "={{ { \"chat_id\": $vars.ADMIN_CHAT_ID, \"text\": $json[\"text\"], \"disable_web_page_preview\": true } }}"
+      },
+      "id": "5",
+      "name": "Telegram Events Send",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [600, 0]
+    },
+    {
+      "parameters": {
+        "responseCode": 200,
+        "responseData": "json",
+        "responseBody": {
+          "ok": true
+        },
+        "options": {
+          "responseHeaders": {
+            "Content-Type": "application/json"
+          }
+        }
+      },
+      "id": "6",
+      "name": "Respond Events Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [800, 0]
+    },
+
+    {
+      "parameters": {
+        "path": "bw5/claim-created",
+        "httpMethod": "POST",
+        "responseMode": "lastNode"
+      },
+      "id": "7",
+      "name": "Webhook Claim Created",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json[\"headers\"][\"x-n8n-token\"]}}",
+              "operation": "equal",
+              "value2": "={{$vars.N8N_TOKEN}}"
+            }
+          ]
+        }
+      },
+      "id": "8",
+      "name": "IF Claim Created Token",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [200, 400]
+    },
+    {
+      "parameters": {
+        "responseCode": 401,
+        "responseData": "json",
+        "responseBody": {
+          "ok": false,
+          "error": "UNAUTHORIZED"
+        },
+        "options": {
+          "responseHeaders": {
+            "Content-Type": "application/json"
+          }
+        }
+      },
+      "id": "9",
+      "name": "Respond Claim Created Unauthorized",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [400, 600]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "text",
+              "value": "={{`[BW5][CLAIM_CREATED] Klaim garansi #${$json.body.id} dibuat untuk invoice ${$json.body.invoice}.`}}"
+            }
+          ]
+        },
+        "options": {
+          "keepOnlySet": true
+        }
+      },
+      "id": "10",
+      "name": "Set Claim Created Message",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [400, 400]
+    },
+    {
+      "parameters": {
+        "url": "https://api.telegram.org/bot{{$vars.TELEGRAM_BOT_TOKEN}}/sendMessage",
+        "jsonParameters": true,
+        "options": {
+          "timeout": 15000,
+          "retryOnFail": true,
+          "maxRetries": 2
+        },
+        "method": "POST",
+        "bodyParametersJson": "={{ { \"chat_id\": $vars.ADMIN_CHAT_ID, \"text\": $json[\"text\"], \"disable_web_page_preview\": true } }}"
+      },
+      "id": "11",
+      "name": "Telegram Claim Created Send",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [600, 400]
+    },
+    {
+      "parameters": {
+        "responseCode": 200,
+        "responseData": "json",
+        "responseBody": {
+          "ok": true
+        },
+        "options": {
+          "responseHeaders": {
+            "Content-Type": "application/json"
+          }
+        }
+      },
+      "id": "12",
+      "name": "Respond Claim Created Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [800, 400]
+    },
+
+    {
+      "parameters": {
+        "path": "bw5/claim-approved",
+        "httpMethod": "POST",
+        "responseMode": "lastNode"
+      },
+      "id": "13",
+      "name": "Webhook Claim Approved",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 800]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json[\"headers\"][\"x-n8n-token\"]}}",
+              "operation": "equal",
+              "value2": "={{$vars.N8N_TOKEN}}"
+            }
+          ]
+        }
+      },
+      "id": "14",
+      "name": "IF Claim Approved Token",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [200, 800]
+    },
+    {
+      "parameters": {
+        "responseCode": 401,
+        "responseData": "json",
+        "responseBody": {
+          "ok": false,
+          "error": "UNAUTHORIZED"
+        },
+        "options": {
+          "responseHeaders": {
+            "Content-Type": "application/json"
+          }
+        }
+      },
+      "id": "15",
+      "name": "Respond Claim Approved Unauthorized",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [400, 1000]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "text",
+              "value": "={{`[BW5][CLAIM_APPROVED] Klaim #${$json.body.id} disetujui.\\nRefund: Rp${Math.floor((($json.body.refund_cents || 0)/100)).toLocaleString('id-ID')}`}}"
+            }
+          ]
+        },
+        "options": {
+          "keepOnlySet": true
+        }
+      },
+      "id": "16",
+      "name": "Set Claim Approved Message",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [400, 800]
+    },
+    {
+      "parameters": {
+        "url": "https://api.telegram.org/bot{{$vars.TELEGRAM_BOT_TOKEN}}/sendMessage",
+        "jsonParameters": true,
+        "options": {
+          "timeout": 15000,
+          "retryOnFail": true,
+          "maxRetries": 2
+        },
+        "method": "POST",
+        "bodyParametersJson": "={{ { \"chat_id\": $vars.ADMIN_CHAT_ID, \"text\": $json[\"text\"], \"disable_web_page_preview\": true } }}"
+      },
+      "id": "17",
+      "name": "Telegram Claim Approved Send",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [600, 800]
+    },
+    {
+      "parameters": {
+        "responseCode": 200,
+        "responseData": "json",
+        "responseBody": {
+          "ok": true
+        },
+        "options": {
+          "responseHeaders": {
+            "Content-Type": "application/json"
+          }
+        }
+      },
+      "id": "18",
+      "name": "Respond Claim Approved Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [800, 800]
+    },
+
+    {
+      "parameters": {
+        "path": "bw5/claim-rejected",
+        "httpMethod": "POST",
+        "responseMode": "lastNode"
+      },
+      "id": "19",
+      "name": "Webhook Claim Rejected",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 1200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json[\"headers\"][\"x-n8n-token\"]}}",
+              "operation": "equal",
+              "value2": "={{$vars.N8N_TOKEN}}"
+            }
+          ]
+        }
+      },
+      "id": "20",
+      "name": "IF Claim Rejected Token",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [200, 1200]
+    },
+    {
+      "parameters": {
+        "responseCode": 401,
+        "responseData": "json",
+        "responseBody": {
+          "ok": false,
+          "error": "UNAUTHORIZED"
+        },
+        "options": {
+          "responseHeaders": {
+            "Content-Type": "application/json"
+          }
+        }
+      },
+      "id": "21",
+      "name": "Respond Claim Rejected Unauthorized",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [400, 1400]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "text",
+              "value": "={{`[BW5][CLAIM_REJECTED] Klaim #${$json.body.id} ditolak. Alasan: ${$json.body.reason || '-'}`}}"
+            }
+          ]
+        },
+        "options": {
+          "keepOnlySet": true
+        }
+      },
+      "id": "22",
+      "name": "Set Claim Rejected Message",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [400, 1200]
+    },
+    {
+      "parameters": {
+        "url": "https://api.telegram.org/bot{{$vars.TELEGRAM_BOT_TOKEN}}/sendMessage",
+        "jsonParameters": true,
+        "options": {
+          "timeout": 15000,
+          "retryOnFail": true,
+          "maxRetries": 2
+        },
+        "method": "POST",
+        "bodyParametersJson": "={{ { \"chat_id\": $vars.ADMIN_CHAT_ID, \"text\": $json[\"text\"], \"disable_web_page_preview\": true } }}"
+      },
+      "id": "23",
+      "name": "Telegram Claim Rejected Send",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [600, 1200]
+    },
+    {
+      "parameters": {
+        "responseCode": 200,
+        "responseData": "json",
+        "responseBody": {
+          "ok": true
+        },
+        "options": {
+          "responseHeaders": {
+            "Content-Type": "application/json"
+          }
+        }
+      },
+      "id": "24",
+      "name": "Respond Claim Rejected Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [800, 1200]
+    },
+
+    {
+      "parameters": {
+        "path": "bw5/preapproval-pending",
+        "httpMethod": "POST",
+        "responseMode": "lastNode"
+      },
+      "id": "25",
+      "name": "Webhook Preapproval Pending",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 1600]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json[\"headers\"][\"x-n8n-token\"]}}",
+              "operation": "equal",
+              "value2": "={{$vars.N8N_TOKEN}}"
+            }
+          ]
+        }
+      },
+      "id": "26",
+      "name": "IF Preapproval Pending Token",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [200, 1600]
+    },
+    {
+      "parameters": {
+        "responseCode": 401,
+        "responseData": "json",
+        "responseBody": {
+          "ok": false,
+          "error": "UNAUTHORIZED"
+        },
+        "options": {
+          "responseHeaders": {
+            "Content-Type": "application/json"
+          }
+        }
+      },
+      "id": "27",
+      "name": "Respond Preapproval Pending Unauthorized",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [400, 1800]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "text",
+              "value": "={{`[BW5][PREAPPROVAL_PENDING] Order ${$json.body.invoice} butuh persetujuan.\\nProduk: ${$json.body.productCode} | Durasi: ${$json.body.durationDays || '-'}\\nBuyer: ${$json.body.buyerPhone} | orderId: ${$json.body.orderId}`}}"
+            }
+          ]
+        },
+        "options": {
+          "keepOnlySet": true
+        }
+      },
+      "id": "28",
+      "name": "Set Preapproval Pending Message",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [400, 1600]
+    },
+    {
+      "parameters": {
+        "url": "https://api.telegram.org/bot{{$vars.TELEGRAM_BOT_TOKEN}}/sendMessage",
+        "jsonParameters": true,
+        "options": {
+          "timeout": 15000,
+          "retryOnFail": true,
+          "maxRetries": 2
+        },
+        "method": "POST",
+        "bodyParametersJson": "={{ { \"chat_id\": $vars.ADMIN_CHAT_ID, \"text\": $json[\"text\"], \"disable_web_page_preview\": true } }}"
+      },
+      "id": "29",
+      "name": "Telegram Preapproval Pending Send",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [600, 1600]
+    },
+    {
+      "parameters": {
+        "responseCode": 200,
+        "responseData": "json",
+        "responseBody": {
+          "ok": true
+        },
+        "options": {
+          "responseHeaders": {
+            "Content-Type": "application/json"
+          }
+        }
+      },
+      "id": "30",
+      "name": "Respond Preapproval Pending Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [800, 1600]
+    },
+
+    {
+      "parameters": {
+        "path": "bw5/ping",
+        "httpMethod": "GET",
+        "responseMode": "lastNode"
+      },
+      "id": "31",
+      "name": "Webhook Ping",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 2000]
+    },
+    {
+      "parameters": {
+        "responseCode": 200,
+        "responseData": "json",
+        "responseBody": {
+          "ok": true,
+          "service": "bw5-bridge"
+        },
+        "options": {
+          "responseHeaders": {
+            "Content-Type": "application/json"
+          }
+        }
+      },
+      "id": "32",
+      "name": "Respond Ping",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [200, 2000]
+    }
+  ],
+  "connections": {
+    "Webhook Events": {
+      "main": [
+        [
+          {
+            "node": "IF Events Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Events Token": {
+      "main": [
+        [
+          {
+            "node": "Set Events Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Events Unauthorized",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Events Message": {
+      "main": [
+        [
+          {
+            "node": "Telegram Events Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Events Send": {
+      "main": [
+        [
+          {
+            "node": "Respond Events Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+
+    "Webhook Claim Created": {
+      "main": [
+        [
+          {
+            "node": "IF Claim Created Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Claim Created Token": {
+      "main": [
+        [
+          {
+            "node": "Set Claim Created Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Claim Created Unauthorized",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Claim Created Message": {
+      "main": [
+        [
+          {
+            "node": "Telegram Claim Created Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Claim Created Send": {
+      "main": [
+        [
+          {
+            "node": "Respond Claim Created Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+
+    "Webhook Claim Approved": {
+      "main": [
+        [
+          {
+            "node": "IF Claim Approved Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Claim Approved Token": {
+      "main": [
+        [
+          {
+            "node": "Set Claim Approved Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Claim Approved Unauthorized",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Claim Approved Message": {
+      "main": [
+        [
+          {
+            "node": "Telegram Claim Approved Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Claim Approved Send": {
+      "main": [
+        [
+          {
+            "node": "Respond Claim Approved Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+
+    "Webhook Claim Rejected": {
+      "main": [
+        [
+          {
+            "node": "IF Claim Rejected Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Claim Rejected Token": {
+      "main": [
+        [
+          {
+            "node": "Set Claim Rejected Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Claim Rejected Unauthorized",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Claim Rejected Message": {
+      "main": [
+        [
+          {
+            "node": "Telegram Claim Rejected Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Claim Rejected Send": {
+      "main": [
+        [
+          {
+            "node": "Respond Claim Rejected Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+
+    "Webhook Preapproval Pending": {
+      "main": [
+        [
+          {
+            "node": "IF Preapproval Pending Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Preapproval Pending Token": {
+      "main": [
+        [
+          {
+            "node": "Set Preapproval Pending Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Preapproval Pending Unauthorized",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Preapproval Pending Message": {
+      "main": [
+        [
+          {
+            "node": "Telegram Preapproval Pending Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Preapproval Pending Send": {
+      "main": [
+        [
+          {
+            "node": "Respond Preapproval Pending Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+
+    "Webhook Ping": {
+      "main": [
+        [
+          {
+            "node": "Respond Ping",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "id": "1",
+  "tags": [
+    { "name": "bw5" },
+    { "name": "bridge" },
+    { "name": "telegram" }
+  ],
+  "pinData": {}
+}
