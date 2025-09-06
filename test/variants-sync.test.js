@@ -38,18 +38,18 @@ test('variants-sync HMAC & upsert', async () => {
   const payload = {product:'Netflix',type:'1P1U',duration_days:30,code:'NET-1P1U-30',active:true};
   const body = JSON.stringify(payload);
   const sig = crypto.createHmac('sha256', process.env.SHEET_SYNC_SECRET).update(body).digest('hex');
-  let res = await fetch(`http://127.0.0.1:${port}/api/variants-sync`, { method:'POST', headers:{'Content-Type':'application/json','x-signature':sig}, body });
+  let res = await fetch(`http://127.0.0.1:${port}/api/variants-sync`, { method:'POST', headers:{'Content-Type':'application/json','X-Hub-Signature-256':'sha256='+sig}, body });
   assert.strictEqual(res.status,200);
   const data = await res.json();
   assert.deepStrictEqual(data.ok,true);
   assert.ok(data.variant_id);
   const firstId = data.variant_id;
-  const badSig = '0'.repeat(sig.length);
-  res = await fetch(`http://127.0.0.1:${port}/api/variants-sync`, { method:'POST', headers:{'Content-Type':'application/json','x-signature':badSig}, body });
+  const badSig = '0'.repeat(64);
+  res = await fetch(`http://127.0.0.1:${port}/api/variants-sync`, { method:'POST', headers:{'Content-Type':'application/json','X-Hub-Signature-256':'sha256='+badSig}, body });
   assert.strictEqual(res.status,403);
   const body2 = JSON.stringify({...payload, active:false});
   const sig2 = crypto.createHmac('sha256', process.env.SHEET_SYNC_SECRET).update(body2).digest('hex');
-  res = await fetch(`http://127.0.0.1:${port}/api/variants-sync`, { method:'POST', headers:{'Content-Type':'application/json','x-signature':sig2}, body: body2 });
+  res = await fetch(`http://127.0.0.1:${port}/api/variants-sync`, { method:'POST', headers:{'Content-Type':'application/json','X-Hub-Signature-256':'sha256='+sig2}, body: body2 });
   assert.strictEqual(res.status,200);
   const data2 = await res.json();
   assert.strictEqual(data2.variant_id, firstId);
@@ -62,7 +62,7 @@ test('variants-sync invalid payload returns details', async () => {
   const server = app.listen(0); const port = server.address().port;
   const body = JSON.stringify({ product:'Netflix' });
   const sig = crypto.createHmac('sha256', process.env.SHEET_SYNC_SECRET).update(body).digest('hex');
-  const res = await fetch(`http://127.0.0.1:${port}/api/variants-sync`, { method:'POST', headers:{'Content-Type':'application/json','x-signature':sig}, body });
+  const res = await fetch(`http://127.0.0.1:${port}/api/variants-sync`, { method:'POST', headers:{'Content-Type':'application/json','X-Hub-Signature-256':'sha256='+sig}, body });
   assert.strictEqual(res.status,400);
   const data = await res.json();
   assert.strictEqual(data.error,'VALIDATION_ERROR');
@@ -78,7 +78,7 @@ test('variants-sync short signature returns 403', async () => {
   const body = JSON.stringify(payload);
   const res = await fetch(`http://127.0.0.1:${port}/api/variants-sync`, {
     method:'POST',
-    headers:{'Content-Type':'application/json','x-signature':'deadbeef'},
+    headers:{'Content-Type':'application/json','X-Hub-Signature-256':'sha256=deadbeef'},
     body
   });
   assert.strictEqual(res.status,403);
