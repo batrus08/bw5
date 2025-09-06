@@ -8,10 +8,17 @@ async function resolveVariantByCode(code){
 
 async function upsertVariantFromSheetRow(row){
   const data = {
-    product: row.product,
-    type: row.type,
-    duration_days: row.duration_days,
+    product_id: row.product_code,
     code: row.code,
+    title: row.title || null,
+    duration_days: row.duration_days,
+    price_cents: row.price_cents,
+    delivery_mode: row.delivery_mode || 'USERPASS',
+    requires_email: row.requires_email ?? false,
+    otp_policy: row.otp_policy || 'NONE',
+    tnc_key: row.tnc_key || null,
+    qris_key: row.qris_key || null,
+    stock_cached: row.stock_cached ?? null,
     active: row.active !== false,
   };
   const v = await prisma.product_variants.upsert({

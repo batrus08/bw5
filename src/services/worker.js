@@ -8,6 +8,7 @@ const { addEvent } = require('./events');
 const { emitToN8N } = require('../utils/n8n');
 const { waCall } = require('./wa');
 const { sendToN8N } = require('../utils/n8n');
+const { inviteCanva } = require('./canva');
 
 function minutes(n){ return n*60*1000; }
 
@@ -173,8 +174,13 @@ async function startWorkers(){
   setInterval(wrap(stockTransitions,'stockTransitions'), minutes(5));
   setInterval(wrap(expiryReminderJob,'expiryReminderJob'), minutes(1));
   setInterval(wrap(lowStockAlert,'lowStockAlert'), minutes(5));
+  setInterval(wrap(otpExpirySweep,'otpExpirySweep'), minutes(5));
+  setInterval(wrap(publishOutput,'publishOutput'), minutes(1));
   if(SHEET_POLL_MS>0){ setInterval(wrap(syncAccountsFromCSV,'syncAccountsFromCSV'), SHEET_POLL_MS); }
   console.log('Workers started.');
 }
+
+async function otpExpirySweep(){ /* TODO */ }
+async function publishOutput(){ /* TODO */ }
 
 module.exports = { startWorkers, stockTransitions, detectTransition, getExpiryReminderCandidates, lowStockAlert };

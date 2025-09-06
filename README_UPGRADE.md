@@ -1,25 +1,26 @@
 # Upgrade Guide
 
-This release introduces a new outbound publisher service for pushing stock and order updates to a secondary spreadsheet (Sheet-2).
-
-## Environment
-
-New env var:
-
-```
-SHEET2_WEBAPP_URL=<webapp endpoint>
-```
-
-Existing optional secrets are re-used:
-`SHEET2_HMAC_SECRET` for HMAC signature.
+This release introduces product variants, QRIS assets and terms management.
 
 ## Migration
 
-No database migration is required for this feature.
+1. Apply Prisma migration:
+   ```
+   npx prisma migrate deploy
+   ```
+2. Seed default variants from existing products if upgrading from older versions:
+   ```
+   node src/db/migrate/seed.js
+   ```
+3. Configure new environment variables in `.env` based on `.env.example`.
+
+## Apps Script
+
+Set up Sheet-1 webhook and Sheet-2 publisher using the new HMAC secrets.
 
 ## Run & Test
 
 ```
 npm test
-npm run dev
+npm start
 ```
