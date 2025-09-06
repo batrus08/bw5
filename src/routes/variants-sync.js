@@ -23,10 +23,17 @@ router.post('/variants-sync', express.json({ type: 'application/json' }), async 
     return res.status(429).json({ ok:false });
   }
   const schema = z.object({
-    product: z.string(),
-    type: z.string(),
-    duration_days: z.number().int().min(1),
+    product_code: z.string(),
     code: z.string(),
+    title: z.string().optional(),
+    duration_days: z.number().int().min(1),
+    price_cents: z.number().int().min(0),
+    stock_cached: z.number().int().nullable().optional(),
+    delivery_mode: z.string().optional(),
+    requires_email: z.boolean().optional(),
+    otp_policy: z.string().optional(),
+    tnc_key: z.string().optional(),
+    qris_key: z.string().optional(),
     active: z.boolean().optional(),
   });
   const parsed = schema.safeParse(req.body);

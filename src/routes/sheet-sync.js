@@ -15,7 +15,8 @@ function buildNaturalKey({ code, username, profile_index }){
 }
 
 async function upsertAccountFromSheet(payload){
-  const variant = await resolveVariantByCode(payload.code);
+  const variantCode = payload.mapped_variant_code || payload.code;
+  const variant = await resolveVariantByCode(variantCode);
   const natural_key = payload.natural_key || buildNaturalKey(payload);
   const existing = await prisma.accounts.findUnique({ where:{ natural_key } }).catch(()=>null);
   const nowBig = BigInt(Date.now());
@@ -24,6 +25,8 @@ async function upsertAccountFromSheet(payload){
     variant_id: variant.variant_id,
     username: payload.username,
     password: payload.password,
+    profile_pin: payload.profile_pin || null,
+    totp_secret: payload.totp_secret || null,
     profile_index: payload.profile_index || null,
     max_usage: payload.max_usage ?? 1,
     fifo_order: nowBig,
@@ -32,18 +35,23 @@ async function upsertAccountFromSheet(payload){
   const updateData = {
     username: payload.username,
     password: payload.password,
+    profile_pin: payload.profile_pin || null,
+    totp_secret: payload.totp_secret || null,
     profile_index: payload.profile_index || null,
     max_usage: payload.max_usage ?? undefined,
   };
   if (payload.reorder === true) updateData.fifo_order = nowBig;
-  if(payload.deleted){
+  const isDeleted = payload.__op === 'DELETE' || payload.deleted;
+  if(isDeleted){
     updateData.status = 'DISABLED';
+  } else if(payload.status){
+    updateData.status = payload.status;
   } else if(existing && existing.status !== 'AVAILABLE'){
     updateData.status = existing.status;
   }
   const account = await prisma.accounts.upsert({
     where:{ natural_key },
-    create: Object.assign({ status: payload.deleted?'DISABLED':'AVAILABLE' }, data),
+    create: Object.assign({ status: isDeleted?'DISABLED':'AVAILABLE' }, data),
     update: updateData,
   });
   await addEvent(null, 'SHEET_SYNC_OK', 'Stock updated', { variant_id: variant.variant_id, account_id: account.id });
@@ -64,11 +72,16 @@ router.post('/sheet-sync', express.json({ type:'application/json' }), async (req
     return res.status(429).json({ ok:false });
   }
   const schema = z.object({
-    code: z.string(),
+    mapped_variant_code: z.string().optional(),
+    code: z.string().optional(),
     username: z.string().optional(),
     password: z.string().optional(),
+    profile_pin: z.string().optional(),
+    totp_secret: z.string().optional(),
     max_usage: z.number().int().min(1).optional(),
     profile_index: z.number().int().nullable().optional(),
+    status: z.string().optional(),
+    __op: z.string().optional(),
     deleted: z.boolean().optional(),
     reorder: z.boolean().optional(),
     natural_key: z.string().optional(),
