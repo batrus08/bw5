@@ -94,6 +94,11 @@ enum Channel {
   N8N
 }
 
+enum OtpType {
+  MANUAL_AFTER_DELIVERY
+  TOTP_SINGLE_USE
+}
+
 enum ClaimStatus {
   PENDING
   APPROVED
@@ -291,8 +296,12 @@ model settings {
 model otptokens {
   id         String   @id
   order_id   BigInt
+  type       OtpType
+  code_hash  String?
   expires_at DateTime
   used       Boolean  @default(false)
+  used_count Int      @default(0)
+  one_time_limit Int  @default(1)
   created_at DateTime @default(now())
 
   @@index([order_id, expires_at])
