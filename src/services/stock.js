@@ -1,4 +1,5 @@
 const prisma = require('../db/client');
+const { publishStock } = require('./output');
 
 async function getStockSummary(){
   return prisma.$queryRaw`SELECT v.code,
@@ -26,4 +27,9 @@ async function getStockDetail(code){
     ORDER BY a.fifo_order ASC, a.id ASC`;
 }
 
-module.exports = { getStockSummary, getStockSummaryRaw, getStockDetail };
+async function publishStockSummary(){
+  const rows = await getStockSummary();
+  return publishStock(rows);
+}
+
+module.exports = { getStockSummary, getStockSummaryRaw, getStockDetail, publishStockSummary };
