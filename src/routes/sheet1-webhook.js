@@ -18,6 +18,7 @@ router.post('/sheet1-webhook', express.json({ type: 'application/json' }), async
     return res.sendStatus(403);
   }
   const { tab_type, records } = req.body || {};
+  const summary = { created: 0, updated: 0, deleted: 0, skipped: 0 };
   try {
     await prisma.$transaction(async (tx) => {
       const [prefix, code] = (tab_type || '').split('_');
@@ -105,12 +106,14 @@ router.post('/sheet1-webhook', express.json({ type: 'application/json' }), async
       } else if (prefix === 'STK' && code && Array.isArray(records)) {
         for (const r of records) {
           const payload = Object.assign({}, r, { code: r.variant_code || code });
-          await upsertAccountFromSheet(payload);
+          const result = await upsertAccountFromSheet(payload);
+          const action = result && result.action && summary[result.action] !== undefined ? result.action : 'skipped';
+          summary[action]++;
         }
       }
     });
-    await addEvent(null, 'SHEET_SYNC_OK', 'sheet1 processed', { tab_type, count: records?.length || 0 });
-    res.json({ ok: true });
+    await addEvent(null, 'SHEET_SYNC_OK', 'sheet1 processed', { tab_type, count: records?.length || 0, summary });
+    res.json(summary);
   } catch (e) {
     await addEvent(null, 'SHEET_SYNC_FAIL', e.message, { tab_type });
     res.status(400).json({ ok: false, error: e.message });

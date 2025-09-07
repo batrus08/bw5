@@ -14,13 +14,16 @@ function buildNaturalKey({ code, username, profile_index }){
   return crypto.createHash('sha1').update(`${code}|${username}|${profile_index||''}`).digest('hex');
 }
 
-async function upsertAccountFromSheet(payload){
+async function upsertAccountFromSheet(payload, db = prisma){
   const variantCode = payload.mapped_variant_code || payload.code;
   const variant = await resolveVariantByCode(variantCode);
   const natural_key = payload.natural_key || buildNaturalKey(payload);
-  const existing = await prisma.accounts.findUnique({ where:{ natural_key } }).catch(()=>null);
+  const existing = await db.accounts.findUnique({ where:{ natural_key } }).catch(()=>null);
   const nowBig = BigInt(Date.now());
-  const data = {
+
+  const isDeleted = payload.__op === 'DELETE' || payload.deleted;
+
+  const baseData = {
     product_code: variant.product,
     variant_id: variant.variant_id,
     username: payload.username,
@@ -32,6 +35,7 @@ async function upsertAccountFromSheet(payload){
     fifo_order: nowBig,
     natural_key,
   };
+  const createData = Object.assign({ status: payload.status || 'AVAILABLE' }, baseData);
   const updateData = {
     username: payload.username,
     password: payload.password,
@@ -41,21 +45,34 @@ async function upsertAccountFromSheet(payload){
     max_usage: payload.max_usage ?? undefined,
   };
   if (payload.reorder === true) updateData.fifo_order = nowBig;
-  const isDeleted = payload.__op === 'DELETE' || payload.deleted;
-  if(isDeleted){
-    updateData.status = 'DISABLED';
-  } else if(payload.status){
+  if (payload.status) {
     updateData.status = payload.status;
-  } else if(existing && existing.status !== 'AVAILABLE'){
+  } else if (existing && existing.status !== 'AVAILABLE') {
     updateData.status = existing.status;
   }
-  const account = await prisma.accounts.upsert({
-    where:{ natural_key },
-    create: Object.assign({ status: isDeleted?'DISABLED':'AVAILABLE' }, data),
+
+  if (isDeleted) {
+    if (!existing) {
+      await addEvent(null, 'SHEET_SYNC_OK', 'Stock delete skipped', { natural_key });
+      return { account: null, action: 'skipped' };
+    }
+    const account = await db.accounts.upsert({
+      where: { natural_key },
+      create: Object.assign({}, createData, { status: 'DISABLED' }),
+      update: { status: 'DISABLED' },
+    });
+    await addEvent(null, 'SHEET_SYNC_OK', 'Stock disabled', { variant_id: variant.variant_id, account_id: account.id });
+    return { account, action: 'deleted' };
+  }
+
+  const account = await db.accounts.upsert({
+    where: { natural_key },
+    create: createData,
     update: updateData,
   });
-  await addEvent(null, 'SHEET_SYNC_OK', 'Stock updated', { variant_id: variant.variant_id, account_id: account.id });
-  return account;
+  const action = existing ? 'updated' : 'created';
+  await addEvent(null, 'SHEET_SYNC_OK', `Stock ${action}`, { variant_id: variant.variant_id, account_id: account.id });
+  return { account, action };
 }
 
 router.post('/sheet-sync', express.json({ type:'application/json' }), async (req, res) => {
@@ -96,8 +113,8 @@ router.post('/sheet-sync', express.json({ type:'application/json' }), async (req
     return res.status(400).json({ ok:false, error:'VALIDATION_ERROR', details:[{ path:['natural_key'], message:'required when username is empty' }]});
   }
   try{
-    const acc = await upsertAccountFromSheet(parsed.data);
-    res.json({ ok:true, id: acc.id });
+    const result = await upsertAccountFromSheet(parsed.data);
+    res.json({ ok:true, id: result.account?.id, action: result.action });
   }catch(e){
     await addEvent(null, 'SHEET_SYNC_FAIL', e.message);
     res.status(400).json({ ok:false, error:e.message });
