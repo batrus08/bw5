@@ -6,7 +6,8 @@ const { ADMIN_CHAT_ID } = require('../config/env');
 const { confirmPaid, rejectOrder, markInvited, resume, skipStage, cancel } = require('../services/orders');
 const { getStockSummary, getStockDetail } = require('../services/stock');
 const { sendMessage, answerCallbackQuery, buildOrderKeyboard, buildNumberGrid, buildGrid, editMessageText } = require('../services/telegram');
-const { sendImageByUrl } = require('../services/wa');
+const { sendImageByUrl, sendText } = require('../services/wa');
+const { addEvent } = require('../services/events');
 
 router.get('/', (_req, res) => res.sendStatus(200));
 
@@ -27,6 +28,19 @@ router.post('/', async (req, res) => {
         const code = data.split(':')[1];
         await answerCallbackQuery(update.callback_query.id);
         await sendMessage(chatId, `📦 Produk dipilih: <b>${code}</b>`, { parse_mode:'HTML' });
+      } else if (data.startsWith('PAY_CONFIRM:')) {
+        const invoice = data.split(':')[1];
+        const order = await prisma.orders.findUnique({ where:{ invoice } });
+        if(order){
+          await prisma.orders.update({ where:{ id: order.id }, data:{ status:'PAID_CONFIRMED' } });
+          await addEvent(order.id, 'ADMIN_CONFIRM', `Order ${invoice} manual confirm`);
+          await sendText(order.buyer_phone, 'Akan dikirim sesuai delivery_mode');
+          await answerCallbackQuery(update.callback_query.id, '✅ Updated');
+          await sendMessage(chatId, `✅ Marked paid ${invoice}`);
+        } else {
+          await answerCallbackQuery(update.callback_query.id, '❌ Not found');
+          await sendMessage(chatId, `❌ Order ${invoice} not found`);
+        }
       } else if (data.startsWith('confirm:')) {
         const invoice = data.split(':')[1];
         const r = await confirmPaid(invoice);
