@@ -26,8 +26,14 @@ async function waCall(path, body){
 
 function sendText(to, text){ return waCall('messages', { messaging_product:'whatsapp', to, type:'text', text:{ body:text } }); }
 function sendInteractiveButtons(to, bodyText, buttons){
-  const combined = [...buttons.map((t,i)=>({ type:'reply', reply:{ id:`b${i+1}`, title:t } })), HELP_BUTTON];
-  return waCall('messages', { messaging_product:'whatsapp', to, type:'interactive', interactive:{ type:'button', body:{ text: bodyText }, action:{ buttons: combined.slice(0,3) } } });
+  const replies = buttons.map((t, i) => ({ type: 'reply', reply: { id: `b${i + 1}`, title: t } }));
+  const combined = replies.concat([HELP_BUTTON]);
+  return waCall('messages', {
+    messaging_product: 'whatsapp',
+    to,
+    type: 'interactive',
+    interactive: { type: 'button', body: { text: bodyText }, action: { buttons: combined.slice(0, 3) } },
+  });
 }
 function sendListMenu(to, header, bodyText, sections){ return waCall('messages', { messaging_product:'whatsapp', to, type:'interactive', interactive:{ type:'list', header:{ type:'text', text: header }, body:{ text: bodyText }, action:{ button:'Pilih', sections: sections.map(s=>({ title:s.title, rows: s.rows.map(r=>({ id:r.id, title:r.title, description:r.desc||'' })) })) } } }); }
 function sendImageById(to, mediaId, caption){ return waCall('messages', { messaging_product:'whatsapp', to, type:'image', image:{ id: mediaId, caption } }); }

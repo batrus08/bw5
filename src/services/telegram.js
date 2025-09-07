@@ -21,9 +21,15 @@ async function tgCall(method, body){
   }
 }
 
-function sendMessage(chatId, text, extra={}){ return tgCall('sendMessage', { chat_id:chatId, text, ...extra }); }
-function editMessageText(chatId, messageId, text, extra={}){ return tgCall('editMessageText', { chat_id:chatId, message_id:messageId, text, ...extra }); }
-function answerCallbackQuery(id, text='', extra={}){ return tgCall('answerCallbackQuery', { callback_query_id:id, text, ...extra }); }
+function sendMessage(chatId, text, extra = {}) {
+  return tgCall('sendMessage', Object.assign({ chat_id: chatId, text }, extra));
+}
+function editMessageText(chatId, messageId, text, extra = {}) {
+  return tgCall('editMessageText', Object.assign({ chat_id: chatId, message_id: messageId, text }, extra));
+}
+function answerCallbackQuery(id, text = '', extra = {}) {
+  return tgCall('answerCallbackQuery', Object.assign({ callback_query_id: id, text }, extra));
+}
 async function notifyAdmin(text){ try{ await sendMessage(ADMIN_CHAT_ID, text, { parse_mode:'HTML' }); }catch(_){} }
 async function notifyCritical(text){ await notifyAdmin('⚠️ <b>CRITICAL</b>\n'+text); }
 
@@ -33,7 +39,8 @@ async function notifyHelpRequested(orderId, stageCtx){
     [{text:'⏭ Skip → PAID', callback_data:`HELP_SKIP:${orderId}:PAID`}],
     [{text:'❌ Cancel', callback_data:`HELP_CANCEL:${orderId}`}],
   ] } };
-  await sendMessage(ADMIN_CHAT_ID, `🆘 HELP_REQUESTED #${orderId}\n<code>${JSON.stringify(stageCtx)}</code>`, { parse_mode:'HTML', ...kb });
+  const opts = Object.assign({ parse_mode: 'HTML' }, kb);
+  await sendMessage(ADMIN_CHAT_ID, `🆘 HELP_REQUESTED #${orderId}\n<code>${JSON.stringify(stageCtx)}</code>`, opts);
 }
 
 function buildOrderKeyboard(invoice, deliveryMode, otpPolicy='NONE'){
