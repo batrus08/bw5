@@ -67,7 +67,7 @@ function buildOrderKeyboard(invoice, deliveryMode, otpPolicy='NONE'){
     ]
   ];
   if(deliveryMode === 'INVITE_EMAIL'){
-    rows.push([{ text:'✅ Sudah Invite', callback_data:`invited:${invoice}` }]);
+    rows.push([{ text:'✅ Tandai Sudah Invite', callback_data:`invited:${invoice}` }]);
   }
   if(otpPolicy === 'MANUAL_AFTER_DELIVERY'){
     rows.push([{ text:'🔐 Kirim OTP', callback_data:`otp:${invoice}` }]);
@@ -92,4 +92,9 @@ function buildGrid(items=[], cols=3, mapFn=it=>({ text: it.label, data: it.id })
   return { reply_markup:{ inline_keyboard: rows } };
 }
 
-module.exports = { sendMessage, editMessageText, answerCallbackQuery, notifyAdmin, notifyCritical, notifyHelpRequested, notifyPaymentRequest, buildOrderKeyboard, buildNumberGrid, buildGrid, tgCall };
+async function notifyOtpRequest(order, tokenId){
+  const text = `🔐 OTP request for <b>${order.invoice}</b> (${order.buyer_phone})`;
+  await sendMessage(ADMIN_CHAT_ID, `${text}\nReply: /otp ${tokenId} <code>123456</code>`, { parse_mode:'HTML' });
+}
+
+module.exports = { sendMessage, editMessageText, answerCallbackQuery, notifyAdmin, notifyCritical, notifyHelpRequested, notifyPaymentRequest, buildOrderKeyboard, buildNumberGrid, buildGrid, tgCall, notifyOtpRequest };

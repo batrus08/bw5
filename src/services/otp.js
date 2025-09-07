@@ -29,23 +29,29 @@ function generateTOTP(secret, step = TOTP_STEP_SEC, timestamp = Date.now()){
   return code.toString().padStart(6,'0');
 }
 
-async function createManualOtp(orderId, ttlSec){
-  const code = Math.floor(100000 + Math.random()*900000).toString();
-  const hash = crypto.createHash('sha256').update(code).digest('hex');
+async function createManualToken(orderId, ttlSec){
   const expires = new Date(Date.now() + ttlSec*1000);
   const id = crypto.randomUUID();
-  await prisma.otptokens.create({ data:{ id, order_id: orderId, type:'MANUAL_AFTER_DELIVERY', code_hash: hash, expires_at: expires, one_time_limit:1 } });
-  return { id, code };
+  await prisma.otptokens.create({ data:{ id, order_id: orderId, type:'MANUAL_AFTER_DELIVERY', expires_at: expires, one_time_limit:1 } });
+  return id;
 }
 
-async function provideManualOtp(orderId, code){
-  const token = await prisma.otptokens.findFirst({ where:{ order_id: orderId, type:'MANUAL_AFTER_DELIVERY', used:false, expires_at:{ gt:new Date() } } });
-  if(!token) return false;
+async function fulfillManualOtp(tokenId, code){
+  const token = await prisma.otptokens.findUnique({ where:{ id: tokenId } });
+  if(!token || token.used || token.expires_at < new Date()) return null;
   const hash = crypto.createHash('sha256').update(code).digest('hex');
-  if(token.code_hash !== hash) return false;
-  if(token.used_count >= token.one_time_limit) return false;
-  await prisma.otptokens.update({ where:{ id: token.id }, data:{ used_count: { increment:1 }, used: token.used_count +1 >= token.one_time_limit } });
-  return true;
+  await prisma.otptokens.update({ where:{ id: tokenId }, data:{ code_hash: hash, used:true, used_count:{ increment:1 } } });
+  return token.order_id;
 }
 
-module.exports = { generateTOTP, createManualOtp, provideManualOtp };
+async function generateSingleUseTOTP(orderId, secret){
+  const existing = await prisma.otptokens.findFirst({ where:{ order_id: orderId, type:'TOTP_SINGLE_USE' } });
+  if(existing) return null;
+  if(!secret) return null;
+  const code = generateTOTP(secret);
+  const expires = new Date(Date.now() + TOTP_STEP_SEC*1000);
+  await prisma.otptokens.create({ data:{ id: crypto.randomUUID(), order_id: orderId, type:'TOTP_SINGLE_USE', used:true, used_count:1, expires_at: expires } });
+  return code;
+}
+
+module.exports = { generateTOTP, createManualToken, fulfillManualOtp, generateSingleUseTOTP };

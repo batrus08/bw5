@@ -8,6 +8,7 @@ const { getStockSummary, getStockDetail } = require('../services/stock');
 const { sendMessage, answerCallbackQuery, buildOrderKeyboard, buildNumberGrid, buildGrid, editMessageText } = require('../services/telegram');
 const { sendImageByUrl, sendText } = require('../services/wa');
 const { addEvent } = require('../services/events');
+const { fulfillManualOtp } = require('../services/otp');
 
 router.get('/', (_req, res) => res.sendStatus(200));
 
@@ -159,6 +160,7 @@ router.post('/', async (req, res) => {
       else if(text === '/on'){ await prisma.settings.upsert({ where:{ key:'bot_enabled' }, update:{ value:'true' }, create:{ key:'bot_enabled', value:'true' } }); await sendMessage(chatId,'✅ Bot ON'); }
       else if(text === '/off'){ await prisma.settings.upsert({ where:{ key:'bot_enabled' }, update:{ value:'false' }, create:{ key:'bot_enabled', value:'false' } }); await sendMessage(chatId,'⛔️ Bot OFF'); }
       else if(text === '/sheet_sync'){ const { syncAccountsFromCSV } = require('../services/sheet'); const r = await syncAccountsFromCSV(); await sendMessage(chatId, r.ok?`Sheet sync OK (upserts: ${r.upserts})`:`Sheet sync fail: ${r.error||r.reason}`); }
+      else if(text.startsWith('/otp ')){ const [, token, code] = text.split(/\s+/); const orderId = await fulfillManualOtp(token, code); if(orderId){ const o = await prisma.orders.findUnique({ where:{ id: orderId } }); await sendText(o.buyer_phone, `OTP: ${code}`); await sendMessage(chatId, `OTP sent for ${o.invoice}`); } else { await sendMessage(chatId,'❌ OTP token invalid'); } }
       else if(text.startsWith('/confirm ')){ const inv=text.split(' ')[1]; const r=await confirmPaid(inv); await sendMessage(chatId, r.ok?`✅ Confirmed ${inv}`:`❌ ${r.error}`); }
       else if(text === '/stock' || text.toLowerCase()==='cek stok'){ const sum=await getStockSummary(); const lines=sum.map(s=>`${s.code}: ${s.units}/${s.capacity}`).join('\n'); const kb={ reply_markup:{ inline_keyboard: sum.map(s=>[{ text:s.code, callback_data:'STOCK_DETAIL:'+s.code }]) } }; await sendMessage(chatId, lines||'empty', kb); }
       else if(text.startsWith('/reject ')){ const inv=text.split(' ')[1]; const r=await rejectOrder(inv); await sendMessage(chatId, r.ok?`❌ Rejected ${inv}`:`❌ ${r.error}`); }
