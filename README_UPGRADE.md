@@ -18,6 +18,19 @@ This release introduces product variants, QRIS assets, HMAC-signed sheet webhook
 
 Both Sheet-1 (input) and Sheet-2 (output) use the header `X-Hub-Signature-256` with value `sha256=<hex>`.
 
+Example:
+
+```
+X-Hub-Signature-256: sha256=4bf5122f34ee... (hex digest)
+```
+
+To sign:
+
+1. Ambil body JSON mentah sebagai string.
+2. Hitung `HMAC_SHA256(body, secret)`.
+3. Ubah hasilnya ke heksadesimal.
+4. Tambahkan prefix `sha256=` dan kirim sebagai header `X-Hub-Signature-256`.
+
 ```javascript
 // Apps Script example
 function sign(body, secret) {
@@ -32,23 +45,33 @@ const res = UrlFetchApp.fetch(url, {
 });
 ```
 
+Untuk verifikasi di server:
+
+```javascript
+import crypto from 'crypto';
+function verify(rawBody, header, secret) {
+  const expected = 'sha256=' +
+    crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+  return crypto.timingSafeEqual(Buffer.from(header), Buffer.from(expected));
+}
+```
+
 Endpoints:
 
 - `POST /api/sheet1-webhook`
 - `POST /api/variants-sync`
 - `POST /api/sheet-sync`
 
-Verify signature by recomputing HMAC with the shared secret and comparing with the header.
+Verifikasi berhasil jika hasil perhitungan sama persis dengan nilai di header.
 
 ## UAT Scenarios
 
-| Produk | Mode | Catatan |
-|-------|------|---------|
-| Netflix | USERPASS | kredensial dikirim langsung setelah pembayaran dikonfirmasi |
-| Disney | MANUAL OTP | admin klik "Kirim OTP" lalu memasukkan kode manual di Telegram |
-| ChatGPT | TOTP_SINGLE_USE | bot menghasilkan TOTP sekali pakai per order |
-| YouTube/M365 | INVITE_EMAIL | admin memasukkan email dan menandai "Sudah Invite" |
-| Canva | CANVA_INVITE | worker otomatis mengundang melalui API Canva |
+| Produk | Mode | Alur Ringkas |
+|--------|------|--------------|
+| Netflix | USERPASS | pilih varian → T&C → QRIS → confirm → kredensial terkirim → Sheet‑2 Orders update |
+| Disney | OTP manual | tombol Akses OTP → TG admin input → OTP dikirim user → one‑time |
+| ChatGPT | TOTP | Akses OTP → kode dihasilkan 1x → tidak bisa diulang |
+| Canva | CANVA_INVITE | minta email → task INVITE_CANVA → notifikasi sukses/gagal |
 
 ## Run & Test
 
