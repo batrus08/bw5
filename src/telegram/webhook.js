@@ -5,7 +5,8 @@ const prisma = require('../db/client');
 const { ADMIN_CHAT_ID } = require('../config/env');
 const { confirmPaid, rejectOrder, markInvited, resume, skipStage, cancel } = require('../services/orders');
 const { getStockSummary, getStockDetail } = require('../services/stock');
-const { sendMessage, answerCallbackQuery, buildOrderKeyboard, notifyAdmin, buildNumberGrid, buildGrid } = require('../services/telegram');
+const { sendMessage, answerCallbackQuery, buildOrderKeyboard, buildNumberGrid, buildGrid, editMessageText } = require('../services/telegram');
+const { sendImageByUrl } = require('../services/wa');
 
 router.get('/', (_req, res) => res.sendStatus(200));
 
@@ -41,10 +42,44 @@ router.post('/', async (req, res) => {
         const r = await markInvited(invoice);
         await answerCallbackQuery(update.callback_query.id, r.ok ? '✅ Marked invited' : `❌ ${r.error}`);
         await sendMessage(chatId, r.ok ? `✅ Marked invited ${invoice}` : `❌ ${r.error}`);
-      } else if (data.startsWith('reproof:')) {
+      } else if (data.startsWith('detail:')) {
         const invoice = data.split(':')[1];
-        await answerCallbackQuery(update.callback_query.id, '🔁 Request sent');
-        await sendMessage(chatId, `🔁 Request new proof for ${invoice}`);
+        const order = await prisma.orders.findUnique({ where:{ invoice }, include:{ product:true, variant:true } });
+        await answerCallbackQuery(update.callback_query.id);
+        if(!order){
+          await sendMessage(chatId, `❌ Order ${invoice} not found`);
+        } else {
+          const amount = (order.amount_cents/100).toLocaleString('id-ID');
+          const summary = `#${order.invoice} \u2022 ${order.product_code}/${order.variant?.code||'-'}\nQty ${order.qty} \u2022 Rp${amount}\nStatus: ${order.status}`;
+          await sendMessage(chatId, summary);
+        }
+      } else if (data.startsWith('qris:')) {
+        const invoice = data.split(':')[1];
+        const order = await prisma.orders.findUnique({ where:{ invoice }, include:{ product:true, variant:true } });
+        if(order){
+          const key = order.variant?.qris_key || order.product.default_qris_key;
+          const asset = key ? await prisma.qris_assets.findUnique({ where:{ key } }) : null;
+          const caption = `Invoice: ${order.invoice}\nTotal: Rp ${(order.amount_cents)/100}`;
+          if(asset?.image_url){
+            await sendImageByUrl(order.buyer_phone, asset.image_url, caption);
+            await answerCallbackQuery(update.callback_query.id, '🔁 QRIS sent');
+            await sendMessage(chatId, `QRIS resent to ${order.buyer_phone}`);
+          } else {
+            await answerCallbackQuery(update.callback_query.id, '❌ No QRIS');
+          }
+        } else {
+          await answerCallbackQuery(update.callback_query.id, '❌ Not found');
+        }
+      } else if (data.startsWith('otp:')) {
+        const invoice = data.split(':')[1];
+        const order = await prisma.orders.findUnique({ where:{ invoice } });
+        if(order){
+          await prisma.tasks.create({ data:{ order_id: order.id, kind:'SEND_OTP_MANUAL' } }).catch(()=>{});
+          await answerCallbackQuery(update.callback_query.id, '🔐 OTP requested');
+          await sendMessage(chatId, `🔐 OTP request queued for ${invoice}`);
+        } else {
+          await answerCallbackQuery(update.callback_query.id, '❌ Not found');
+        }
       } else if (data.startsWith('HELP_RESUME:')) {
         const id = BigInt(data.split(':')[1]);
         await resume(id);
