@@ -110,6 +110,12 @@ async function setPayAck(invoice){
   return { ok:true, order:upd };
 }
 
+async function ackTerms(orderId){
+  const upd = await prisma.orders.update({ where:{ id: orderId }, data:{ tnc_ack_at: new Date() } });
+  await addEvent(orderId, 'TNC_CONFIRMED', 'terms accepted');
+  return upd;
+}
+
 async function confirmPaid(invoice){
   const order = await prisma.orders.findUnique({ where:{ invoice }, include:{ product:true, account:true } });
   if(!order) return { ok:false, error:'ORDER_NOT_FOUND' };
@@ -222,4 +228,4 @@ async function cancel(orderId){
   return upd;
 }
 
-module.exports = { createOrder, setPayAck, confirmPaid, rejectOrder, markInvited, approvePreapproval, rejectPreapproval, reserveAccount, requestHelp, resume, skipStage, cancel };
+module.exports = { createOrder, setPayAck, confirmPaid, rejectOrder, markInvited, approvePreapproval, rejectPreapproval, reserveAccount, ackTerms, requestHelp, resume, skipStage, cancel };
