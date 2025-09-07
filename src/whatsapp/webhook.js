@@ -6,7 +6,7 @@ const { WA_APP_SECRET, WA_VERIFY_TOKEN, RATE_LIMIT_WA_PER_MIN, RATE_LIMIT_PERSIS
 const { allow } = require('../utils/rateLimit');
 const { allowPersistent } = require('../utils/rateLimitDB');
 const { addEvent } = require('../services/events');
-const { sendInteractiveButtons, sendListMenu, formatRp } = require('../services/wa');
+const { sendInteractiveButtons, sendListMenu, formatRp, sendQrisPayment } = require('../services/wa');
 function withHelpButtons(to, text, primaryLabel='Lanjut'){
   return sendInteractiveButtons(to, text, [primaryLabel]);
 }
@@ -18,6 +18,11 @@ const { calcLinearRefund } = require('../utils/refund');
 
 const router = express.Router();
 const { claimState, orderState } = require('./state');
+
+async function sendPayInfo(jid, order){
+  await sendQrisPayment(jid, order);
+  orderState.set(jid, { step:'PAY_CONFIRM', orderId: order.id });
+}
 
 async function onVariantSelected(from, variantId){
   const variant = await prisma.product_variants.findUnique({ where:{ variant_id: variantId }, include:{ product:true } });
@@ -145,12 +150,10 @@ router.post('/', async (req, res) => {
                 orderState.set(from, { step:'TNC_ACK', order, product });
                 await sendInteractiveButtons(from, snippet, ['Setuju','Batal']);
               } else {
-                const summary = `Invoice: ${order.invoice}\nTotal: ${formatRp(order.amount_cents)}\nSilakan lanjutkan pembayaran.`;
-                await withHelpButtons(from, summary);
+                await sendPayInfo(from, order);
               }
             } else {
-              const summary = `Invoice: ${order.invoice}\nTotal: ${formatRp(order.amount_cents)}\nSilakan lanjutkan pembayaran.`;
-              await withHelpButtons(from, summary);
+              await sendPayInfo(from, order);
             }
           }
         } else if (t.startsWith('stok ')) {
@@ -161,10 +164,11 @@ router.post('/', async (req, res) => {
           await withHelpButtons(from, 'Ketik: menu | order <kode> <qty> [email] | stok <kode>');
         }
       } else if (m.type === 'image') {
-        const order = await prisma.orders.findFirst({ where:{ buyer_phone: from, status:'PENDING_PAYMENT' }, orderBy:{ created_at:'desc' }, include:{ product:true, variant:true } });
+        const order = await prisma.orders.findFirst({ where:{ buyer_phone: from, status:{ in:['PENDING_PAYMENT','AWAITING_CONFIRM'] } }, orderBy:{ created_at:'desc' }, include:{ product:true, variant:true } });
         if (!order) { await withHelpButtons(from, 'Tidak ada order menunggu pembayaran.'); continue; }
         await prisma.orders.update({ where:{ id: order.id }, data:{ proof_id: m.image?.id || 'unknown', proof_mime: m.image?.mime_type || '' } });
         await setPayAck(order.invoice);
+        orderState.delete(from);
         await withHelpButtons(from, 'Terima kasih! Bukti pembayaran diterima dan sedang diverifikasi admin.');
         const deliveryMode = order.delivery_mode || order.product.default_mode || null;
         const otpPolicy = order.variant?.otp_policy || order.product.default_otp_policy || 'NONE';
@@ -181,6 +185,7 @@ router.post('/', async (req, res) => {
           const order = await prisma.orders.findFirst({ where:{ buyer_phone: from }, orderBy:{ created_at:'desc' } });
           if(order){ await requestHelp(order.id, { stage: 'UNKNOWN' }); }
           await withHelpButtons(from, 'Permintaan bantuan diterima. Proses dijeda oleh admin.');
+          orderState.delete(from);
           continue;
         }
         const claim = claimState.get(from);
@@ -196,14 +201,14 @@ router.post('/', async (req, res) => {
             order = await ackTerms(order.id);
             if(order.status === 'AWAITING_PREAPPROVAL'){
               await withHelpButtons(from, 'Order diterima dan menunggu persetujuan admin.');
+              orderState.delete(from);
             } else {
-              const summary = `Invoice: ${order.invoice}\nTotal: ${formatRp(order.amount_cents)}\nSilakan lanjutkan pembayaran.`;
-              await withHelpButtons(from, summary);
+              await sendPayInfo(from, order);
             }
           } else if(id === 'b2'){
             await withHelpButtons(from, 'Dibatalkan.');
+            orderState.delete(from);
           }
-          orderState.delete(from);
           continue;
         }
         if(orderSel?.step === 'TNC_ACK' && id.startsWith('b')){
@@ -211,14 +216,22 @@ router.post('/', async (req, res) => {
             const updated = await ackTerms(orderSel.order.id);
             if(updated.status === 'AWAITING_PREAPPROVAL'){
               await withHelpButtons(from, 'Order diterima dan menunggu persetujuan admin.');
+              orderState.delete(from);
             } else {
-              const summary = `Invoice: ${updated.invoice}\nTotal: ${formatRp(updated.amount_cents)}\nSilakan lanjutkan pembayaran.`;
-              await withHelpButtons(from, summary);
+              await sendPayInfo(from, updated);
             }
           } else if(id === 'b2'){
             await prisma.orders.update({ where:{ id: orderSel.order.id }, data:{ status:'CANCELLED' } });
             await addEvent(orderSel.order.id, 'TNC_DECLINED', 'terms declined');
             await withHelpButtons(from, 'Pesanan dibatalkan karena S&K ditolak.');
+            orderState.delete(from);
+          }
+          continue;
+        }
+        if(orderSel?.step === 'PAY_CONFIRM' && id.startsWith('b')){
+          if(id === 'b1'){
+            await prisma.orders.update({ where:{ id: orderSel.orderId }, data:{ status:'AWAITING_CONFIRM' } });
+            await withHelpButtons(from, 'Terima kasih! Pembayaran akan segera kami cek.');
           }
           orderState.delete(from);
           continue;
@@ -247,8 +260,7 @@ router.post('/', async (req, res) => {
                 if (order.status === 'AWAITING_PREAPPROVAL') {
                   await withHelpButtons(from, 'Order diterima dan menunggu persetujuan admin.');
                 } else {
-                  const summary = `Invoice: ${order.invoice}\nTotal: ${formatRp(order.amount_cents)}\nSilakan lanjutkan pembayaran.`;
-                  await withHelpButtons(from, summary);
+                  await sendPayInfo(from, order);
                 }
               }
             } else if (orderSel?.step === 'VARIANT_SELECTED' && title === 'batal') {
