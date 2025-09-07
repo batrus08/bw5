@@ -21,7 +21,7 @@ Both Sheet-1 (input) and Sheet-2 (output) use the header `X-Hub-Signature-256` w
 Example:
 
 ```
-X-Hub-Signature-256: sha256=4bf5122f34ee... (hex digest)
+X-Hub-Signature-256: sha256=0329a06b62cd16b33eb6792be8c60b158d89a2ee3a876fce9a881ebb488c0914
 ```
 
 To sign:
@@ -33,15 +33,16 @@ To sign:
 
 ```javascript
 // Apps Script example
-function sign(body, secret) {
-  const h = Utilities.computeHmacSha256Signature(body, secret);
-  return 'sha256=' + h.map(b=>('0'+(b&0xff).toString(16)).slice(-2)).join('');
-}
-const res = UrlFetchApp.fetch(url, {
-  method:'post',
-  contentType:'application/json',
-  payload: body,
-  headers: { 'X-Hub-Signature-256': sign(body, SECRET) }
+const payload = JSON.stringify({ hello: 'world' });
+const raw = Utilities.computeHmacSha256Signature(payload, SECRET);
+const hex = raw.map(b => ('0' + (b & 0xff).toString(16)).slice(-2)).join('');
+const header = 'sha256=' + hex;
+
+UrlFetchApp.fetch(url, {
+  method: 'post',
+  contentType: 'application/json',
+  payload,
+  headers: { 'X-Hub-Signature-256': header },
 });
 ```
 
@@ -64,14 +65,15 @@ Endpoints:
 
 Verifikasi berhasil jika hasil perhitungan sama persis dengan nilai di header.
 
-## UAT Scenarios
+## UAT Checklist
 
 | Produk | Mode | Alur Ringkas |
 |--------|------|--------------|
-| Netflix | USERPASS | pilih varian → T&C → QRIS → confirm → kredensial terkirim → Sheet‑2 Orders update |
-| Disney | OTP manual | tombol Akses OTP → TG admin input → OTP dikirim user → one‑time |
-| ChatGPT | TOTP | Akses OTP → kode dihasilkan 1x → tidak bisa diulang |
-| Canva | CANVA_INVITE | minta email → task INVITE_CANVA → notifikasi sukses/gagal |
+| Netflix | USERPASS | pilih varian → setuju T&C (cek `tnc_ack_at`) → QRIS (gambar) → TG Sudah Bayar → kredensial terkirim → Sheet‑2 Orders update |
+| Disney | OTP manual | akses OTP → TG admin input 6 digit → OTP ke user → one‑time |
+| ChatGPT | TOTP | akses OTP → kode dihasilkan 1x → second attempt ditolak |
+| Canva | INVITE | minta email → task INVITE_CANVA → notifikasi sukses/gagal |
+| STK_* | SYNC | sinkron Sheet‑1 → Sheet‑2 Stock update |
 
 ## Run & Test
 
