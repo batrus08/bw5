@@ -10,7 +10,9 @@ const { sendInteractiveButtons, sendListMenu, formatRp, sendQrisPayment } = requ
 function withHelpButtons(to, text, primaryLabel='Lanjut'){
   return sendInteractiveButtons(to, text, [primaryLabel]);
 }
-const { sendMessage, buildOrderKeyboard, notifyPaymentRequest } = require('../services/telegram');
+const { sendMessage, buildOrderKeyboard, notifyPaymentRequest, notifyOtpRequest } = require('../services/telegram');
+const { createManualToken, generateSingleUseTOTP } = require('../services/otp');
+const { ADMIN_CHAT_ID } = require('../config/env');
 const { createOrder, setPayAck, requestHelp, ackTerms } = require('../services/orders');
 const { createClaim, setEwallet } = require('../services/claims');
 const { normalizeEwallet } = require('../utils/validation');
@@ -84,6 +86,22 @@ router.post('/', async (req, res) => {
         const body = (m.text?.body || '').trim();
         const t = body.toLowerCase();
         const state = claimState.get(from);
+        const ostate = orderState.get(from);
+        if (ostate?.step === 'INVITE_EMAIL') {
+          const email = body.trim();
+          const valid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
+          if(valid){
+            await prisma.orders.update({ where:{ id: ostate.orderId }, data:{ email_for_invite: email } });
+            await withHelpButtons(from, `Email diterima: ${email}`);
+            const order = await prisma.orders.findUnique({ where:{ id: ostate.orderId } });
+            const kb = buildOrderKeyboard(order.invoice, 'INVITE_EMAIL');
+            await sendMessage(ADMIN_CHAT_ID, `📧 Email untuk ${order.invoice}: ${email}`, kb);
+            orderState.delete(from);
+          } else {
+            await withHelpButtons(from,'Format email tidak valid.');
+          }
+          continue;
+        }
         if (state?.step === 'CLAIM_INVOICE') {
           const invoice = body;
           const order = await prisma.orders.findUnique({ where:{ invoice }, include:{ product:true } });
@@ -190,6 +208,21 @@ router.post('/', async (req, res) => {
         }
         const claim = claimState.get(from);
         const orderSel = orderState.get(from);
+        if(orderSel?.step === 'OTP_WAIT' && id.startsWith('b')){
+          if(orderSel.otpPolicy === 'MANUAL_AFTER_DELIVERY'){
+            const tokenId = await createManualToken(orderSel.orderId, 300);
+            const ord = await prisma.orders.findUnique({ where:{ id: orderSel.orderId } });
+            await withHelpButtons(from,'OTP diminta. Tunggu admin mengirim kode.');
+            await notifyOtpRequest(ord, tokenId);
+          } else if(orderSel.otpPolicy === 'TOTP_SINGLE_USE'){
+            const ord = await prisma.orders.findUnique({ where:{ id: orderSel.orderId }, include:{ account:true } });
+            const code = await generateSingleUseTOTP(orderSel.orderId, ord.account?.totp_secret);
+            if(code){ await withHelpButtons(from, `OTP: ${code}`); }
+            else { await withHelpButtons(from, 'OTP sudah pernah diakses.'); }
+          }
+          orderState.delete(from);
+          continue;
+        }
         if(id.startsWith('var:')){
           await onVariantSelected(from, id.slice(4));
           continue;

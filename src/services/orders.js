@@ -3,7 +3,8 @@ const prisma = require('../db/client');
 const { addEvent } = require('./events');
 const { notifyHelpRequested } = require('./telegram');
 const { emitToN8N } = require('../utils/n8n');
-const { sendText } = require('./wa');
+const { sendText, sendInteractiveButtons } = require('./wa');
+const { orderState } = require('../whatsapp/state');
 const { resolveVariantByCode } = require('./variants');
 
 function toCents(n){ return Math.round(Number(n||0)); }
@@ -96,7 +97,7 @@ async function reserveAccount(orderId, variant_id){
     if(!account) throw new Error('OUT_OF_STOCK');
     const used = account.used_count + 1;
     const disable = used >= account.max_usage;
-    await tx.accounts.update({ where:{ id: account.id }, data:{ used_count: used, status: disable ? 'DISABLED' : 'AVAILABLE' } });
+    await tx.accounts.update({ where:{ id: account.id }, data:{ used_count: used, status: disable ? 'DISABLED' : 'RESERVED' } });
     await tx.orders.update({ where:{ id: order.id }, data:{ account_id: account.id } });
     return { accountId: account.id };
   });
@@ -117,7 +118,7 @@ async function ackTerms(orderId){
 }
 
 async function confirmPaid(invoice){
-  const order = await prisma.orders.findUnique({ where:{ invoice }, include:{ product:true, account:true } });
+  const order = await prisma.orders.findUnique({ where:{ invoice }, include:{ product:true, variant:true, account:true } });
   if(!order) return { ok:false, error:'ORDER_NOT_FOUND' };
   if(order.status === 'DELIVERED' || order.fulfilled_at != null){
     return { ok:true, order };
@@ -127,14 +128,18 @@ async function confirmPaid(invoice){
     upd = await prisma.orders.update({ where:{ invoice }, data:{ status:'PAID', pay_ack_at: new Date() } });
     await addEvent(order.id, 'PAY_ACK', `Order ${invoice} confirmed paid`);
   }
-  let variant = null;
-  if(order.metadata?.code){
-    variant = await resolveVariantByCode(order.metadata.code).catch(()=>null);
-  }
-  if(order.delivery_mode==='INVITE_ONLY' || order.product.delivery_mode==='privat_invite' || order.product.delivery_mode==='canva_invite'){
+  const deliveryMode = order.delivery_mode || order.product.delivery_mode || null;
+  if(deliveryMode === 'INVITE_EMAIL'){
     await addEvent(order.id,'INVITE_QUEUED','Invite requested');
-    const kind = order.product.delivery_mode==='canva_invite' ? 'INVITE_CANVA' : 'INVITE_CHATGPT';
-    await prisma.tasks.create({ data:{ order_id: order.id, kind } }).catch(()=>{});
+    if(!order.email_for_invite){
+      orderState.set(order.buyer_phone, { step:'INVITE_EMAIL', orderId: order.id });
+      await sendText(order.buyer_phone,'Silakan balas dengan email yang akan diundang.');
+    }
+    return { ok:true, order: upd };
+  }
+  if(deliveryMode === 'CANVA_INVITE'){
+    await addEvent(order.id,'INVITE_QUEUED','Invite requested');
+    await prisma.tasks.create({ data:{ order_id: order.id, kind:'INVITE_CANVA' } }).catch(()=>{});
     return { ok:true, order: upd };
   }
   const idem = order.idempotency_key || `deliver:${invoice}`;
@@ -142,6 +147,7 @@ async function confirmPaid(invoice){
     return { ok:true, order };
   }
   let accountId;
+  const variant = order.variant || (order.metadata?.code ? await resolveVariantByCode(order.metadata.code).catch(()=>null) : null);
   try {
     ({ accountId } = await reserveAccount(order.id, variant?.variant_id));
     await addEvent(order.id,'DELIVERY_READY','Account reserved',{ account_id: accountId }, 'SYSTEM', 'system', 'reserve:'+order.id);
@@ -155,6 +161,17 @@ async function confirmPaid(invoice){
   const durationDays = variant?.duration_days ?? (order.product.duration_months ? order.product.duration_months*30 : null);
   const expire = durationDays ? new Date(now.getTime() + durationDays*86400000) : null;
   await prisma.orders.update({ where:{ id: order.id }, data:{ fulfilled_at: now, expires_at: expire, status:'DELIVERED', idempotency_key: idem } });
+  const account = await prisma.accounts.findUnique({ where:{ id: accountId } });
+  const profile = account.profile_name || account.profile_index || '-';
+  const pin = account.profile_pin || '-';
+  const expStr = expire ? expire.toLocaleDateString('id-ID') : '-';
+  const cred = `Username: ${account.username}\nPassword: ${account.password}\nProfile: ${profile}\nPIN: ${pin}\nExpired: ${expStr}`;
+  await sendText(order.buyer_phone, cred);
+  const otpPolicy = variant?.otp_policy || order.product.default_otp_policy || 'NONE';
+  if(otpPolicy !== 'NONE'){
+    await sendInteractiveButtons(order.buyer_phone,'Perlu OTP?', ['Akses OTP']);
+    orderState.set(order.buyer_phone,{ step:'OTP_WAIT', orderId: order.id, otpPolicy });
+  }
   await addEvent(order.id,'CREDENTIALS_SENT','Credentials sent',{ account_id: accountId },'SYSTEM','system', idem);
   return { ok:true, order: upd };
 }
