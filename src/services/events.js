@@ -6,7 +6,8 @@ const TX_EVENTS = new Set(['ORDER_PAID','CREDENTIALS_SENT','INVITED_DONE','EXPIR
 
 async function addEvent(orderId, kind, message, meta={}, actor='SYSTEM', source='system', idempotency_key=null){
   try{
-    const ev = await prisma.events.create({ data:{ order_id: orderId||null, kind, actor, source, meta:{ message, ...meta }, idempotency_key } });
+    const metaObj = Object.assign({ message }, meta);
+    const ev = await prisma.events.create({ data:{ order_id: orderId||null, kind, actor, source, meta: metaObj, idempotency_key } });
     emitToN8N('/events', { orderId, kind, message, meta, actor, source });
     if(orderId && TX_EVENTS.has(kind)){
       const o = await prisma.orders.findUnique({ where:{ id: orderId }, include:{ account:true } });
