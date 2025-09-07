@@ -24,7 +24,7 @@ async function migrateIfEnabled() {
   );
 
   try {
-    console.log('[preflight] Running prisma migrate deploy...');
+    console.log('[preflight] Running prisma migrate deploy');
     await run(prismaBin, ['migrate', 'deploy']);
     console.log('[preflight] migrate deploy OK');
   } catch (e) {
