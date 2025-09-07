@@ -6,9 +6,10 @@ const { notifyAdmin, notifyCritical, tgCall } = require('./telegram');
 const { getStockSummaryRaw } = require('./stock');
 const { addEvent } = require('./events');
 const { emitToN8N } = require('../utils/n8n');
-const { waCall } = require('./wa');
+const { waCall, sendText } = require('./wa');
 const { sendToN8N } = require('../utils/n8n');
 const { inviteCanva } = require('./canva');
+const { publishSnapshot } = require('./output');
 
 function minutes(n){ return n*60*1000; }
 
@@ -82,9 +83,17 @@ async function retryDeadLetters(){
     const waitMs = Math.pow(2, d.retry_count) * 30_000;
     if(Date.now() - new Date(d.last_attempt).getTime() < waitMs) continue;
     try {
-      if (d.channel === 'TELEGRAM') await tgCall(d.endpoint || 'sendMessage', d.payload);
-      else if (d.channel === 'WHATSAPP') await waCall(d.endpoint || 'messages', d.payload);
-      else if (d.channel === 'N8N') await sendToN8N(d.endpoint || '', d.payload);
+      if (d.channel === 'TELEGRAM') {
+        await tgCall(d.endpoint || 'sendMessage', d.payload);
+      } else if (d.channel === 'WHATSAPP') {
+        await waCall(d.endpoint || 'messages', d.payload);
+      } else if (d.channel === 'N8N') {
+        if (d.endpoint === 'CANVA_INVITE') {
+          await inviteCanva(d.payload.email, { disableDL: true });
+        } else {
+          await sendToN8N(d.endpoint || '', d.payload);
+        }
+      }
       await prisma.deadletters.delete({ where:{ id: d.id } });
     } catch (e) {
       await prisma.deadletters.update({
@@ -160,6 +169,37 @@ async function expiryReminderJob(){
   }
 }
 
+async function processTasks(){
+  const list = await prisma.tasks.findMany({
+    where: { status: 'OPEN', kind: 'INVITE_CANVA' },
+    take: 10,
+    orderBy: { id: 'asc' },
+    include: {
+      order: { select: { id: true, invoice: true, buyer_phone: true, email: true, email_for_invite: true } },
+    },
+  });
+  for (const t of list) {
+    const order = t.order;
+    const email = order.email_for_invite || order.email;
+    if (!email) {
+      await prisma.tasks.update({ where: { id: t.id }, data: { status: 'CANCELLED', note: 'EMAIL_MISSING' } });
+      continue;
+    }
+    try {
+      await inviteCanva(email);
+      await prisma.tasks.update({ where: { id: t.id }, data: { status: 'DONE' } });
+      await addEvent(order.id, 'INVITE_SENT_BY_ADMIN', 'Canva invite sent', { email }, 'SYSTEM', 'worker');
+      await notifyAdmin(`✅ Canva invite <b>${order.invoice}</b> → ${email}`);
+      await sendText(order.buyer_phone, `✅ Invite Canva dikirim ke ${email}`);
+    } catch (e) {
+      await prisma.tasks.update({ where: { id: t.id }, data: { status: 'CANCELLED', note: e.message } });
+      await addEvent(order.id, 'INVITE_SENT_BY_ADMIN', 'Canva invite failed', { email, error: e.message }, 'SYSTEM', 'worker');
+      await notifyAdmin(`❌ Canva invite <b>${order.invoice}</b> gagal: ${e.message}`);
+      await sendText(order.buyer_phone, '❌ Gagal mengundang ke Canva. Silakan hubungi admin.');
+    }
+  }
+}
+
 async function startWorkers(){
   try {
     await prisma.orders.findFirst({ select:{ id:true }, take:1 });
@@ -175,12 +215,27 @@ async function startWorkers(){
   setInterval(wrap(expiryReminderJob,'expiryReminderJob'), minutes(1));
   setInterval(wrap(lowStockAlert,'lowStockAlert'), minutes(5));
   setInterval(wrap(otpExpirySweep,'otpExpirySweep'), minutes(5));
-  setInterval(wrap(publishOutput,'publishOutput'), minutes(1));
+  setInterval(wrap(processTasks,'processTasks'), minutes(1));
+  setInterval(wrap(publishOutput,'publishOutput'), minutes(60));
   if(SHEET_POLL_MS>0){ setInterval(wrap(syncAccountsFromCSV,'syncAccountsFromCSV'), SHEET_POLL_MS); }
   console.log('Workers started.');
 }
 
-async function otpExpirySweep(){ /* TODO */ }
-async function publishOutput(){ /* TODO */ }
+async function otpExpirySweep(){
+  const now = new Date();
+  await prisma.otptokens.updateMany({
+    where: { type: 'MANUAL_AFTER_DELIVERY', used: false, expires_at: { lt: now } },
+    data: { used: true },
+  });
+}
+
+async function publishOutput(){
+  const snapshot = {
+    ts: new Date().toISOString(),
+    orders: await prisma.orders.count(),
+    products: await prisma.products.count(),
+  };
+  await publishSnapshot(snapshot).catch(() => {});
+}
 
 module.exports = { startWorkers, stockTransitions, detectTransition, getExpiryReminderCandidates, lowStockAlert };
