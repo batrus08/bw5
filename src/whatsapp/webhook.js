@@ -2,16 +2,16 @@
 const express = require('express');
 const crypto = require('crypto');
 const prisma = require('../db/client');
-const { WA_APP_SECRET, WA_VERIFY_TOKEN, RATE_LIMIT_WA_PER_MIN, RATE_LIMIT_PERSISTENT, PAYMENT_QRIS_TEXT, PAYMENT_QRIS_IMAGE_URL, PAYMENT_QRIS_MEDIA_ID, PAYMENT_DEADLINE_MIN } = require('../config/env');
+const { WA_APP_SECRET, WA_VERIFY_TOKEN, RATE_LIMIT_WA_PER_MIN, RATE_LIMIT_PERSISTENT } = require('../config/env');
 const { allow } = require('../utils/rateLimit');
 const { allowPersistent } = require('../utils/rateLimitDB');
 const { addEvent } = require('../services/events');
-const { sendInteractiveButtons, sendImageById, sendImageByUrl, sendListMenu, formatRp } = require('../services/wa');
+const { sendInteractiveButtons, sendListMenu, formatRp } = require('../services/wa');
 function withHelpButtons(to, text, primaryLabel='Lanjut'){
   return sendInteractiveButtons(to, text, [primaryLabel]);
 }
 const { sendMessage, buildOrderKeyboard } = require('../services/telegram');
-const { createOrder, setPayAck, requestHelp } = require('../services/orders');
+const { createOrder, setPayAck, requestHelp, ackTerms } = require('../services/orders');
 const { createClaim, setEwallet } = require('../services/claims');
 const { normalizeEwallet } = require('../utils/validation');
 const { calcLinearRefund } = require('../utils/refund');
@@ -24,6 +24,16 @@ async function onVariantSelected(from, variantId){
   if(!variant || !variant.active || !variant.product || !variant.product.is_active){
     await withHelpButtons(from, 'Varian tidak tersedia.');
     return;
+  }
+  const tncKey = variant.tnc_key || variant.product.default_tnc_key;
+  if(tncKey){
+    const terms = await prisma.terms.findUnique({ where:{ key: tncKey } }).catch(()=>null);
+    if(terms && terms.body_md){
+      const snippet = terms.body_md.slice(0,400);
+      orderState.set(from, { step:'VARIANT_TNC', variant, product: variant.product });
+      await sendInteractiveButtons(from, snippet, ['Setuju','Batal']);
+      return;
+    }
   }
   orderState.set(from, { step:'VARIANT_SELECTED', variant, product: variant.product, variant_id: variant.variant_id });
   const msg = `${variant.title || variant.code}\nHarga: ${formatRp(variant.price_cents)}`;
@@ -126,20 +136,21 @@ router.post('/', async (req, res) => {
           const order = await createOrder({ buyer_phone: from, product_code: code, qty, amount_cents: product.price_cents * qty, email });
           if(order.status === 'AWAITING_PREAPPROVAL'){
             await withHelpButtons(from, 'Order diterima dan menunggu persetujuan admin.');
-          } else if(product.sk_text && !order.tnc_ack_at){
-            orderState.set(from, { step:'TNC_ACK', order, product });
-            await sendInteractiveButtons(from, product.sk_text, ['Setuju','Tolak']);
           } else {
-            const deadlineAt = new Date(order.created_at.getTime() + PAYMENT_DEADLINE_MIN*60*1000);
-            const caption = `${PAYMENT_QRIS_TEXT}\nInvoice: ${order.invoice}\nTotal: Rp ${(product.price_cents*qty)/100}\nDeadline: ${deadlineAt.toLocaleTimeString()}\nKirim foto bukti bayar ke sini.`;
-            if (PAYMENT_QRIS_MEDIA_ID){
-              await sendImageById(from, PAYMENT_QRIS_MEDIA_ID, caption);
-              await withHelpButtons(from, 'Jika sudah bayar kirim bukti.');
-            } else if (PAYMENT_QRIS_IMAGE_URL){
-              await sendImageByUrl(from, PAYMENT_QRIS_IMAGE_URL, caption);
-              await withHelpButtons(from, 'Jika sudah bayar kirim bukti.');
+            const tncKey = product.default_tnc_key;
+            if(tncKey){
+              const terms = await prisma.terms.findUnique({ where:{ key: tncKey } }).catch(()=>null);
+              if(terms && terms.body_md){
+                const snippet = terms.body_md.slice(0,400);
+                orderState.set(from, { step:'TNC_ACK', order, product });
+                await sendInteractiveButtons(from, snippet, ['Setuju','Batal']);
+              } else {
+                const summary = `Invoice: ${order.invoice}\nTotal: ${formatRp(order.amount_cents)}\nSilakan lanjutkan pembayaran.`;
+                await withHelpButtons(from, summary);
+              }
             } else {
-              await withHelpButtons(from, caption);
+              const summary = `Invoice: ${order.invoice}\nTotal: ${formatRp(order.amount_cents)}\nSilakan lanjutkan pembayaran.`;
+              await withHelpButtons(from, summary);
             }
           }
         } else if (t.startsWith('stok ')) {
@@ -178,22 +189,31 @@ router.post('/', async (req, res) => {
           await onVariantSelected(from, id.slice(4));
           continue;
         }
+        if(orderSel?.step === 'VARIANT_TNC' && id.startsWith('b')){
+          if(id === 'b1'){
+            const { variant, product } = orderSel;
+            let order = await createOrder({ buyer_phone: from, product_code: product.code, variant_code: variant.code, qty:1, amount_cents: variant.price_cents });
+            order = await ackTerms(order.id);
+            if(order.status === 'AWAITING_PREAPPROVAL'){
+              await withHelpButtons(from, 'Order diterima dan menunggu persetujuan admin.');
+            } else {
+              const summary = `Invoice: ${order.invoice}\nTotal: ${formatRp(order.amount_cents)}\nSilakan lanjutkan pembayaran.`;
+              await withHelpButtons(from, summary);
+            }
+          } else if(id === 'b2'){
+            await withHelpButtons(from, 'Dibatalkan.');
+          }
+          orderState.delete(from);
+          continue;
+        }
         if(orderSel?.step === 'TNC_ACK' && id.startsWith('b')){
           if(id === 'b1'){
-            await prisma.orders.update({ where:{ id: orderSel.order.id }, data:{ tnc_ack_at: new Date() } });
-            await addEvent(orderSel.order.id, 'TNC_CONFIRMED', 'terms accepted');
-            const order = orderSel.order;
-            const product = orderSel.product;
-            const deadlineAt = new Date(order.created_at.getTime() + PAYMENT_DEADLINE_MIN*60*1000);
-            const caption = `${PAYMENT_QRIS_TEXT}\nInvoice: ${order.invoice}\nTotal: Rp ${(product.price_cents*order.qty)/100}\nDeadline: ${deadlineAt.toLocaleTimeString()}\nKirim foto bukti bayar ke sini.`;
-            if (PAYMENT_QRIS_MEDIA_ID){
-              await sendImageById(from, PAYMENT_QRIS_MEDIA_ID, caption);
-              await withHelpButtons(from, 'Jika sudah bayar kirim bukti.');
-            } else if (PAYMENT_QRIS_IMAGE_URL){
-              await sendImageByUrl(from, PAYMENT_QRIS_IMAGE_URL, caption);
-              await withHelpButtons(from, 'Jika sudah bayar kirim bukti.');
+            const updated = await ackTerms(orderSel.order.id);
+            if(updated.status === 'AWAITING_PREAPPROVAL'){
+              await withHelpButtons(from, 'Order diterima dan menunggu persetujuan admin.');
             } else {
-              await withHelpButtons(from, caption);
+              const summary = `Invoice: ${updated.invoice}\nTotal: ${formatRp(updated.amount_cents)}\nSilakan lanjutkan pembayaran.`;
+              await withHelpButtons(from, summary);
             }
           } else if(id === 'b2'){
             await prisma.orders.update({ where:{ id: orderSel.order.id }, data:{ status:'CANCELLED' } });
@@ -217,34 +237,21 @@ router.post('/', async (req, res) => {
               await withHelpButtons(from, 'Dibatalkan.');
               claimState.delete(from);
             }
-          } else if (orderSel?.step === 'VARIANT_SELECTED' && title === 'beli 1') {
-            orderState.delete(from);
-            const { product, variant } = orderSel;
-            if (!product || !product.is_active || !variant || !variant.active) {
-              await withHelpButtons(from, 'Produk tidak tersedia.');
-            } else {
-              const order = await createOrder({ buyer_phone: from, product_code: product.code, variant_code: variant.code, qty: 1, amount_cents: variant.price_cents });
-              if (order.status === 'AWAITING_PREAPPROVAL') {
-                await withHelpButtons(from, 'Order diterima dan menunggu persetujuan admin.');
-              } else if(product.sk_text && !order.tnc_ack_at){
-                orderState.set(from, { step:'TNC_ACK', order, product });
-                await sendInteractiveButtons(from, product.sk_text, ['Setuju','Tolak']);
+            } else if (orderSel?.step === 'VARIANT_SELECTED' && title === 'beli 1') {
+              orderState.delete(from);
+              const { product, variant } = orderSel;
+              if (!product || !product.is_active || !variant || !variant.active) {
+                await withHelpButtons(from, 'Produk tidak tersedia.');
               } else {
-                const deadlineAt = new Date(order.created_at.getTime() + PAYMENT_DEADLINE_MIN * 60 * 1000);
-                const caption = `${PAYMENT_QRIS_TEXT}\nInvoice: ${order.invoice}\nTotal: ${formatRp(order.amount_cents)}\nDeadline: ${deadlineAt.toLocaleTimeString()}\nKirim foto bukti bayar ke sini.`;
-                if (PAYMENT_QRIS_MEDIA_ID){
-                  await sendImageById(from, PAYMENT_QRIS_MEDIA_ID, caption);
-                  await withHelpButtons(from, 'Jika sudah bayar kirim bukti.');
-                }
-                else if (PAYMENT_QRIS_IMAGE_URL){
-                  await sendImageByUrl(from, PAYMENT_QRIS_IMAGE_URL, caption);
-                  await withHelpButtons(from, 'Jika sudah bayar kirim bukti.');
+                const order = await createOrder({ buyer_phone: from, product_code: product.code, variant_code: variant.code, qty: 1, amount_cents: variant.price_cents });
+                if (order.status === 'AWAITING_PREAPPROVAL') {
+                  await withHelpButtons(from, 'Order diterima dan menunggu persetujuan admin.');
                 } else {
-                  await withHelpButtons(from, caption);
+                  const summary = `Invoice: ${order.invoice}\nTotal: ${formatRp(order.amount_cents)}\nSilakan lanjutkan pembayaran.`;
+                  await withHelpButtons(from, summary);
                 }
               }
-            }
-          } else if (orderSel?.step === 'VARIANT_SELECTED' && title === 'batal') {
+            } else if (orderSel?.step === 'VARIANT_SELECTED' && title === 'batal') {
             orderState.delete(from);
             await withHelpButtons(from, 'Dibatalkan.');
           } else if (title === 'order') await withHelpButtons(from, 'Format: order <kode> <qty> [email]');
