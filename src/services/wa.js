@@ -1,6 +1,6 @@
 
 const prisma = require('../db/client');
-const { WA_ACCESS_TOKEN, WA_PHONE_NUMBER_ID, WA_API_BASE } = require('../config/env');
+const { WA_ACCESS_TOKEN, WA_PHONE_NUMBER_ID, WA_API_BASE, PAYMENT_DEADLINE_MIN } = require('../config/env');
 
 const HELP_BUTTON = { type: 'reply', title: '🆘 Bantuan', id: 'help' };
 function endpoint(path){ return `${WA_API_BASE}/${WA_PHONE_NUMBER_ID}/${path}`; }
@@ -58,4 +58,25 @@ function formatRp(cents){
 }
 function sendImageById(to, mediaId, caption){ return waCall('messages', { messaging_product:'whatsapp', to, type:'image', image:{ id: mediaId, caption } }); }
 function sendImageByUrl(to, url, caption){ return waCall('messages', { messaging_product:'whatsapp', to, type:'image', image:{ link: url, caption } }); }
-module.exports = { sendText, sendInteractiveButtons, sendListMenu, sendImageById, sendImageByUrl, waCall, formatRp };
+async function sendQrisPayment(to, order){
+  let key = order.qris_key;
+  if(!key && order.variant_id){
+    const v = await prisma.product_variants.findUnique({ where:{ variant_id: order.variant_id } }).catch(()=>null);
+    key = v?.qris_key;
+  }
+  if(!key){
+    const p = await prisma.products.findUnique({ where:{ code: order.product_code } }).catch(()=>null);
+    key = p?.default_qris_key;
+  }
+  let imageUrl = null;
+  if(key){
+    const asset = await prisma.qris_assets.findUnique({ where:{ key } }).catch(()=>null);
+    imageUrl = asset?.image_url || null;
+  }
+  const deadlineAt = PAYMENT_DEADLINE_MIN ? new Date(Date.now() + PAYMENT_DEADLINE_MIN*60000) : null;
+  const deadlineStr = deadlineAt ? deadlineAt.toLocaleString('id-ID',{ hour12:false }) : null;
+  const caption = `Invoice: ${order.invoice}\nTotal: ${formatRp(order.amount_cents)}${deadlineStr ? `\nBayar sebelum ${deadlineStr}` : ''}`;
+  if(imageUrl){ await sendImageByUrl(to, imageUrl, caption); }
+  await sendInteractiveButtons(to, caption, ['Saya sudah bayar']);
+}
+module.exports = { sendText, sendInteractiveButtons, sendListMenu, sendImageById, sendImageByUrl, waCall, formatRp, sendQrisPayment };
