@@ -124,13 +124,14 @@ router.post('/', async (req, res) => {
           await withHelpButtons(from, 'Ketik: menu | order <kode> <qty> [email] | stok <kode>');
         }
       } else if (m.type === 'image') {
-        const order = await prisma.orders.findFirst({ where:{ buyer_phone: from, status:'PENDING_PAYMENT' }, orderBy:{ created_at:'desc' } });
+        const order = await prisma.orders.findFirst({ where:{ buyer_phone: from, status:'PENDING_PAYMENT' }, orderBy:{ created_at:'desc' }, include:{ product:true, variant:true } });
         if (!order) { await withHelpButtons(from, 'Tidak ada order menunggu pembayaran.'); continue; }
         await prisma.orders.update({ where:{ id: order.id }, data:{ proof_id: m.image?.id || 'unknown', proof_mime: m.image?.mime_type || '' } });
         await setPayAck(order.invoice);
         await withHelpButtons(from, 'Terima kasih! Bukti pembayaran diterima dan sedang diverifikasi admin.');
-        const prod = await prisma.products.findUnique({ where:{ code: order.product_code } });
-        await sendMessage(process.env.ADMIN_CHAT_ID, `🧾 Bukti bayar masuk\nInvoice: <b>${order.invoice}</b>\nProduk: ${prod.name} (${prod.code})\nQty: ${order.qty}\nTotal: Rp ${(order.amount_cents)/100}`, { parse_mode:'HTML', ...buildOrderKeyboard(order.invoice, prod.delivery_mode) });
+        const deliveryMode = order.delivery_mode || order.product.default_mode || null;
+        const otpPolicy = order.variant?.otp_policy || order.product.default_otp_policy || 'NONE';
+        await sendMessage(process.env.ADMIN_CHAT_ID, `🧾 Bukti bayar masuk\nInvoice: <b>${order.invoice}</b>\nProduk: ${order.product.name} (${order.product.code})\nQty: ${order.qty}\nTotal: Rp ${(order.amount_cents)/100}`, { parse_mode:'HTML', ...buildOrderKeyboard(order.invoice, deliveryMode, otpPolicy) });
       } else if (m.type === 'interactive') {
         const id = m.interactive?.button_reply?.id || m.interactive?.list_reply?.id || '';
         const title = m.interactive?.button_reply?.title?.toLowerCase() || '';

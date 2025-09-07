@@ -36,13 +36,22 @@ async function notifyHelpRequested(orderId, stageCtx){
   await sendMessage(ADMIN_CHAT_ID, `🆘 HELP_REQUESTED #${orderId}\n<code>${JSON.stringify(stageCtx)}</code>`, { parse_mode:'HTML', ...kb });
 }
 
-function buildOrderKeyboard(invoice, productMode){
-  const rows=[];
-  rows.push([{text:'✅ Konfirmasi',callback_data:`confirm:${invoice}`},{text:'❌ Tolak',callback_data:`reject:${invoice}`}]);
-  if(productMode==='privat_invite'||productMode==='canva_invite'){
-    rows.push([{text:'✅ Mark Invited',callback_data:`invited:${invoice}`},{text:'🔁 Resend',callback_data:`resend:${invoice}`}]);
-  } else {
-    rows.push([{text:'🔁 Minta bukti ulang',callback_data:`reproof:${invoice}`}]);
+function buildOrderKeyboard(invoice, deliveryMode, otpPolicy='NONE'){
+  const rows = [
+    [
+      { text:'✅ Konfirmasi', callback_data:`confirm:${invoice}` },
+      { text:'❌ Tolak', callback_data:`reject:${invoice}` }
+    ],
+    [
+      { text:'ℹ️ Detail', callback_data:`detail:${invoice}` },
+      { text:'🔁 Kirim QRIS', callback_data:`qris:${invoice}` }
+    ]
+  ];
+  if(deliveryMode === 'INVITE_EMAIL'){
+    rows.push([{ text:'✅ Sudah Invite', callback_data:`invited:${invoice}` }]);
+  }
+  if(otpPolicy === 'MANUAL_AFTER_DELIVERY'){
+    rows.push([{ text:'🔐 Kirim OTP', callback_data:`otp:${invoice}` }]);
   }
   return { reply_markup:{ inline_keyboard: rows } };
 }

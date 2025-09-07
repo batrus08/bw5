@@ -16,7 +16,7 @@ Backend Express + Prisma untuk Telegram dan WhatsApp.
    ADMIN_API_TOKEN=supersecret
    WEBHOOK_SECRET_PATH=secret123
    PUBLIC_URL=https://yourdomain.com
-   WA_ACCESS_TOKEN=EAA...
+   WA_ACCESS_TOKEN=<WA_ACCESS_TOKEN>
    WA_PHONE_NUMBER_ID=123456789
    PAYMENT_QRIS_TEXT=Silakan bayar
    N8N_BASE_URL=https://n8n.example/webhook/bw5
