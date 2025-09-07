@@ -43,6 +43,18 @@ async function notifyHelpRequested(orderId, stageCtx){
   await sendMessage(ADMIN_CHAT_ID, `🆘 HELP_REQUESTED #${orderId}\n<code>${JSON.stringify(stageCtx)}</code>`, opts);
 }
 
+async function notifyPaymentRequest(order){
+  const variant = order.variant?.code || '-';
+  const amount = (order.amount_cents/100).toLocaleString('id-ID');
+  const ts = new Date().toLocaleString('id-ID');
+  const text = `#${order.invoice} \u2022 ${order.buyer_phone} \u2022 ${order.product_code}/${variant} \u2022 Qty ${order.qty} \u2022 Rp${amount} \u2022 ${ts}`;
+  const kb = { reply_markup:{ inline_keyboard:[
+    [{ text:'Sudah Bayar', callback_data:`PAY_CONFIRM:${order.invoice}` }, { text:'Belum', callback_data:`reject:${order.invoice}` }],
+    [{ text:'Detail', callback_data:`detail:${order.invoice}` }, { text:'Kirim Ulang QRIS', callback_data:`qris:${order.invoice}` }]
+  ] } };
+  await sendMessage(ADMIN_CHAT_ID, text, kb);
+}
+
 function buildOrderKeyboard(invoice, deliveryMode, otpPolicy='NONE'){
   const rows = [
     [
@@ -80,4 +92,4 @@ function buildGrid(items=[], cols=3, mapFn=it=>({ text: it.label, data: it.id })
   return { reply_markup:{ inline_keyboard: rows } };
 }
 
-module.exports = { sendMessage, editMessageText, answerCallbackQuery, notifyAdmin, notifyCritical, notifyHelpRequested, buildOrderKeyboard, buildNumberGrid, buildGrid, tgCall };
+module.exports = { sendMessage, editMessageText, answerCallbackQuery, notifyAdmin, notifyCritical, notifyHelpRequested, notifyPaymentRequest, buildOrderKeyboard, buildNumberGrid, buildGrid, tgCall };

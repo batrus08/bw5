@@ -10,7 +10,7 @@ const { sendInteractiveButtons, sendListMenu, formatRp, sendQrisPayment } = requ
 function withHelpButtons(to, text, primaryLabel='Lanjut'){
   return sendInteractiveButtons(to, text, [primaryLabel]);
 }
-const { sendMessage, buildOrderKeyboard } = require('../services/telegram');
+const { sendMessage, buildOrderKeyboard, notifyPaymentRequest } = require('../services/telegram');
 const { createOrder, setPayAck, requestHelp, ackTerms } = require('../services/orders');
 const { createClaim, setEwallet } = require('../services/claims');
 const { normalizeEwallet } = require('../utils/validation');
@@ -230,8 +230,9 @@ router.post('/', async (req, res) => {
         }
         if(orderSel?.step === 'PAY_CONFIRM' && id.startsWith('b')){
           if(id === 'b1'){
-            await prisma.orders.update({ where:{ id: orderSel.orderId }, data:{ status:'AWAITING_CONFIRM' } });
+            const updated = await prisma.orders.update({ where:{ id: orderSel.orderId }, data:{ status:'AWAITING_CONFIRM' }, include:{ product:true, variant:true } });
             await withHelpButtons(from, 'Terima kasih! Pembayaran akan segera kami cek.');
+            await notifyPaymentRequest(updated);
           }
           orderState.delete(from);
           continue;
