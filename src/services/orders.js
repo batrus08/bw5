@@ -6,6 +6,8 @@ const { emitToN8N } = require('../utils/n8n');
 const { sendText, sendInteractiveButtons } = require('./wa');
 const { orderState } = require('../whatsapp/state');
 const { resolveVariantByCode } = require('./variants');
+const { publishOrders } = require('./output');
+const { publishStockSummary } = require('./stock');
 
 function toCents(n){ return Math.round(Number(n||0)); }
 
@@ -39,6 +41,7 @@ async function createOrder({ buyer_phone, product_code, variant_code, qty = 1, a
     },
   });
   await addEvent(order.id, 'ORDER_CREATED', `Order ${invoice} created`);
+  await publishOrders([{ invoice: order.invoice, status: order.status }]).catch(()=>{});
   if (requiresApproval) {
     const pre = await prisma.preapprovalrequests.create({ data: { order_id: order.id } });
     await emitToN8N('/preapproval-pending', {
@@ -65,6 +68,7 @@ async function approvePreapproval(invoice){
     prisma.orders.update({ where:{ id: order.id }, data:{ status:'PENDING_PAYMENT' } }),
   ]);
   await addEvent(order.id, 'ADMIN_CONFIRM', `Order ${invoice} approved`);
+  await publishOrders([{ invoice, status: 'PENDING_PAYMENT' }]).catch(()=>{});
   return { ok:true };
 }
 
@@ -81,11 +85,12 @@ async function rejectPreapproval(invoice, note){
     prisma.orders.update({ where:{ id: order.id }, data:{ status:'REJECTED' } }),
   ]);
   await addEvent(order.id, 'ADMIN_REJECT', `Order ${invoice} rejected: ${reason}`);
+  await publishOrders([{ invoice, status: 'REJECTED' }]).catch(()=>{});
   return { ok:true };
 }
 
 async function reserveAccount(orderId, variant_id){
-  return await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM orders WHERE id=${orderId} FOR UPDATE`;
     const order = await tx.orders.findUnique({ where:{ id: orderId } });
     if(!order) throw new Error('ORDER_NOT_FOUND');
@@ -101,6 +106,8 @@ async function reserveAccount(orderId, variant_id){
     await tx.orders.update({ where:{ id: order.id }, data:{ account_id: account.id } });
     return { accountId: account.id };
   });
+  await publishStockSummary().catch(()=>{});
+  return result;
 }
 
 async function setPayAck(invoice){
@@ -108,6 +115,7 @@ async function setPayAck(invoice){
   if(!order) return { ok:false, error:'ORDER_NOT_FOUND' };
   const upd = await prisma.orders.update({ where:{ invoice }, data:{ status:'PENDING_PAY_ACK' } });
   await addEvent(upd.id, 'REMINDER_SENT', 'Waiting admin verification');
+  await publishOrders([{ invoice, status: 'PENDING_PAY_ACK' }]).catch(()=>{});
   return { ok:true, order:upd };
 }
 
@@ -127,6 +135,7 @@ async function confirmPaid(invoice){
   if(order.status !== 'PAID' && order.status !== 'DELIVERED'){
     upd = await prisma.orders.update({ where:{ invoice }, data:{ status:'PAID', pay_ack_at: new Date() } });
     await addEvent(order.id, 'PAY_ACK', `Order ${invoice} confirmed paid`);
+    await publishOrders([{ invoice, status: 'PAID' }]).catch(()=>{});
   }
   const deliveryMode = order.delivery_mode || order.product.delivery_mode || null;
   if(deliveryMode === 'INVITE_EMAIL'){
@@ -161,6 +170,7 @@ async function confirmPaid(invoice){
   const durationDays = variant?.duration_days ?? (order.product.duration_months ? order.product.duration_months*30 : null);
   const expire = durationDays ? new Date(now.getTime() + durationDays*86400000) : null;
   await prisma.orders.update({ where:{ id: order.id }, data:{ fulfilled_at: now, expires_at: expire, status:'DELIVERED', idempotency_key: idem } });
+  await publishOrders([{ invoice, status: 'DELIVERED' }]).catch(()=>{});
   const account = await prisma.accounts.findUnique({ where:{ id: accountId } });
   const profile = account.profile_name || account.profile_index || '-';
   const pin = account.profile_pin || '-';
@@ -181,6 +191,7 @@ async function rejectOrder(invoice, reason='Rejected'){
   if(!o) return { ok:false, error:'ORDER_NOT_FOUND' };
   const upd = await prisma.orders.update({ where:{ invoice }, data:{ status:'REJECTED' } });
   await addEvent(upd.id, 'ADMIN_REJECT', `Order ${invoice} rejected: ${reason}`);
+  await publishOrders([{ invoice, status: 'REJECTED' }]).catch(()=>{});
   return { ok:true, order:upd };
 }
 
@@ -192,10 +203,11 @@ async function markInvited(invoice){
   const durationDays = variant?.duration_days ?? (o.product.duration_months ? o.product.duration_months*30 : null);
   const expire = durationDays ? new Date(now.getTime() + durationDays*86400000) : null;
   await prisma.$transaction([
-    prisma.orders.update({ where:{ id:o.id }, data:{ fulfilled_at: now, expires_at: expire } }),
+    prisma.orders.update({ where:{ id:o.id }, data:{ fulfilled_at: now, expires_at: expire, status:'DELIVERED' } }),
     prisma.tasks.updateMany({ where:{ order_id:o.id, status:'OPEN' }, data:{ status:'DONE' } }),
   ]);
   await addEvent(o.id, 'INVITED_DONE', `Admin marked invited for ${invoice}`);
+  await publishOrders([{ invoice, status: 'DELIVERED' }]).catch(()=>{});
   return { ok:true };
 }
 
@@ -210,6 +222,7 @@ async function requestHelp(orderId, stageCtx){
   const meta = { prev_status: prevStatus, stage: stageCtx };
   await addEvent(updated.id, 'HELP_REQUESTED', 'Customer requested help', meta);
   await notifyHelpRequested(orderId, stageCtx);
+  await publishOrders([{ invoice: updated.invoice, status: 'ON_HOLD_HELP' }]).catch(()=>{});
   return updated;
 }
 
@@ -227,6 +240,7 @@ async function resume(orderId){
   prev = prev || 'PENDING_PAYMENT';
   const upd = await prisma.orders.update({ where: { id: orderId }, data: { status: prev } });
   await addEvent(orderId, 'HELP_RESUMED', 'Help session resumed', { prev_status: prev });
+  await publishOrders([{ invoice: upd.invoice, status: prev }]).catch(()=>{});
   return upd;
 }
 
@@ -235,6 +249,7 @@ async function resume(orderId){
 async function skipStage(orderId, nextStatus){
   const upd = await prisma.orders.update({ where: { id: orderId }, data: { status: nextStatus } });
   await addEvent(orderId, 'HELP_RESUMED', 'Stage skipped', { skipped: true, next_status: nextStatus });
+  await publishOrders([{ invoice: upd.invoice, status: nextStatus }]).catch(()=>{});
   return upd;
 }
 
@@ -242,6 +257,7 @@ async function skipStage(orderId, nextStatus){
 async function cancel(orderId){
   const upd = await prisma.orders.update({ where: { id: orderId }, data: { status: 'REJECTED' } });
   await addEvent(orderId, 'HELP_CANCELLED', 'Order cancelled during help');
+  await publishOrders([{ invoice: upd.invoice, status: 'REJECTED' }]).catch(()=>{});
   return upd;
 }
 
