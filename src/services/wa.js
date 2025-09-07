@@ -35,7 +35,27 @@ function sendInteractiveButtons(to, bodyText, buttons){
     interactive: { type: 'button', body: { text: bodyText }, action: { buttons: combined.slice(0, 3) } },
   });
 }
-function sendListMenu(to, header, bodyText, sections){ return waCall('messages', { messaging_product:'whatsapp', to, type:'interactive', interactive:{ type:'list', header:{ type:'text', text: header }, body:{ text: bodyText }, action:{ button:'Pilih', sections: sections.map(s=>({ title:s.title, rows: s.rows.map(r=>({ id:r.id, title:r.title, description:r.desc||'' })) })) } } }); }
+function sendListMenu(jid, title, buttonText, sections){
+  return waCall('messages', {
+    messaging_product: 'whatsapp',
+    to: jid,
+    type: 'interactive',
+    interactive: {
+      type: 'list',
+      body: { text: title },
+      action: {
+        button: buttonText,
+        sections: sections.map(s => ({
+          title: s.title,
+          rows: s.rows.map(r => ({ id: r.id, title: r.title, description: r.desc || '' }))
+        }))
+      }
+    }
+  });
+}
+function formatRp(cents){
+  return new Intl.NumberFormat('id-ID',{ style:'currency', currency:'IDR', minimumFractionDigits:0, maximumFractionDigits:0 }).format(cents/100);
+}
 function sendImageById(to, mediaId, caption){ return waCall('messages', { messaging_product:'whatsapp', to, type:'image', image:{ id: mediaId, caption } }); }
 function sendImageByUrl(to, url, caption){ return waCall('messages', { messaging_product:'whatsapp', to, type:'image', image:{ link: url, caption } }); }
-module.exports = { sendText, sendInteractiveButtons, sendListMenu, sendImageById, sendImageByUrl, waCall };
+module.exports = { sendText, sendInteractiveButtons, sendListMenu, sendImageById, sendImageByUrl, waCall, formatRp };
