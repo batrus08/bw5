@@ -8,21 +8,44 @@ const { resolveVariantByCode } = require('./variants');
 
 function toCents(n){ return Math.round(Number(n||0)); }
 
-async function createOrder({ buyer_phone, product_code, qty=1, amount_cents, email }){
+async function createOrder({ buyer_phone, product_code, variant_code, qty = 1, amount_cents, email }) {
   const invoice = 'INV-' + Date.now();
-  const product = await prisma.products.findUnique({ where:{ code: product_code } });
+  const product = await prisma.products.findUnique({ where: { code: product_code } });
+  if (!product) throw new Error('PRODUCT_NOT_FOUND');
+  let variant = null;
+  if (variant_code) {
+    variant = await resolveVariantByCode(variant_code);
+    if (variant.product_id !== product_code) throw new Error('VARIANT_PRODUCT_MISMATCH');
+  }
+  const price = variant ? variant.price_cents : product.price_cents || 0;
+  const finalAmount = toCents(amount_cents != null ? amount_cents : price * qty);
+  const delivery_mode = variant?.delivery_mode || product.default_mode || null;
+  const qris_key = variant?.qris_key || product.default_qris_key || null;
   const requiresApproval = product?.approval_required;
   const status = requiresApproval ? 'AWAITING_PREAPPROVAL' : 'PENDING_PAYMENT';
-  const order = await prisma.orders.create({ data:{ invoice, buyer_phone, product_code, qty, amount_cents: toCents(amount_cents), status, email } });
+  const order = await prisma.orders.create({
+    data: {
+      invoice,
+      buyer_phone,
+      product_code,
+      variant_id: variant?.variant_id || null,
+      qty,
+      amount_cents: finalAmount,
+      delivery_mode,
+      qris_key,
+      status,
+      email,
+    },
+  });
   await addEvent(order.id, 'ORDER_CREATED', `Order ${invoice} created`);
-  if(requiresApproval){
-    const pre = await prisma.preapprovalrequests.create({ data:{ order_id: order.id } });
+  if (requiresApproval) {
+    const pre = await prisma.preapprovalrequests.create({ data: { order_id: order.id } });
     await emitToN8N('/preapproval-pending', {
       preapprovalId: pre.id,
       orderId: order.id,
       invoice,
       productCode: product_code,
-      durationDays: product?.duration_days || null,
+      durationDays: variant?.duration_days || null,
       buyerPhone: buyer_phone,
     });
   }
