@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const prisma = require('../db/client');
 const { resolveVariantByCode } = require('../services/variants');
 const { addEvent } = require('../services/events');
+const { publishStockSummary } = require('../services/stock');
 const { allow } = require('../utils/rateLimit');
 const { SHEET_SYNC_SECRET } = require('../config/env');
 const { z } = require('zod');
@@ -62,6 +63,7 @@ async function upsertAccountFromSheet(payload, db = prisma){
       update: { status: 'DISABLED' },
     });
     await addEvent(null, 'SHEET_SYNC_OK', 'Stock disabled', { variant_id: variant.variant_id, account_id: account.id });
+    await publishStockSummary().catch(() => {});
     return { account, action: 'deleted' };
   }
 
@@ -72,6 +74,7 @@ async function upsertAccountFromSheet(payload, db = prisma){
   });
   const action = existing ? 'updated' : 'created';
   await addEvent(null, 'SHEET_SYNC_OK', `Stock ${action}`, { variant_id: variant.variant_id, account_id: account.id });
+  await publishStockSummary().catch(() => {});
   return { account, action };
 }
 
