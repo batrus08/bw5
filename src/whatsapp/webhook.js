@@ -6,7 +6,7 @@ const { WA_APP_SECRET, WA_VERIFY_TOKEN, RATE_LIMIT_WA_PER_MIN, RATE_LIMIT_PERSIS
 const { allow } = require('../utils/rateLimit');
 const { allowPersistent } = require('../utils/rateLimitDB');
 const { addEvent } = require('../services/events');
-const { sendInteractiveButtons, sendImageById, sendImageByUrl } = require('../services/wa');
+const { sendInteractiveButtons, sendImageById, sendImageByUrl, sendListMenu, formatRp } = require('../services/wa');
 function withHelpButtons(to, text, primaryLabel='Lanjut'){
   return sendInteractiveButtons(to, text, [primaryLabel]);
 }
@@ -18,6 +18,17 @@ const { calcLinearRefund } = require('../utils/refund');
 
 const router = express.Router();
 const { claimState, orderState } = require('./state');
+
+async function onVariantSelected(from, variantId){
+  const variant = await prisma.product_variants.findUnique({ where:{ variant_id: variantId }, include:{ product:true } });
+  if(!variant || !variant.active || !variant.product || !variant.product.is_active){
+    await withHelpButtons(from, 'Varian tidak tersedia.');
+    return;
+  }
+  orderState.set(from, { step:'VARIANT_SELECTED', variant, product: variant.product, variant_id: variant.variant_id });
+  const msg = `${variant.title || variant.code}\nHarga: ${formatRp(variant.price_cents)}`;
+  await sendInteractiveButtons(from, msg, ['Beli 1','Batal']);
+}
 router.get('/', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
@@ -94,9 +105,24 @@ router.post('/', async (req, res) => {
           await sendInteractiveButtons(from, 'Pilih menu:', ['Order', 'Harga', 'FAQ', '🛡️ Klaim Garansi']);
         } else if (t.startsWith('order ')) {
           const parts = t.split(/\s+/);
-          const code = parts[1], qty = Number(parts[2]||1), email = parts[3]||null;
-          const product = await prisma.products.findUnique({ where:{ code } });
+          const code = parts[1];
+          const product = await prisma.products.findUnique({ where:{ code }, include:{ variants:{ where:{ active:true } } } });
           if (!product || !product.is_active) { await withHelpButtons(from, 'Produk tidak tersedia.'); continue; }
+          const variants = product.variants || [];
+          if(variants.length){
+            const rows = [];
+            for(const v of variants){
+              let stock = v.stock_cached;
+              if(stock == null){
+                const [{ count }] = await prisma.$queryRaw`SELECT COUNT(*)::int AS count FROM accounts WHERE variant_id=${v.variant_id} AND status='AVAILABLE' AND used_count < max_usage`;
+                stock = Number(count)||0;
+              }
+              rows.push({ id:`var:${v.variant_id}`, title: v.title || v.code, desc: `${formatRp(v.price_cents)} • Stok: ${stock}` });
+            }
+            await sendListMenu(from, `Pilih varian ${product.name}`, 'Pilih', [{ title:'Varian', rows }]);
+            continue;
+          }
+          const qty = Number(parts[2]||1), email = parts[3]||null;
           const order = await createOrder({ buyer_phone: from, product_code: code, qty, amount_cents: product.price_cents * qty, email });
           if(order.status === 'AWAITING_PREAPPROVAL'){
             await withHelpButtons(from, 'Order diterima dan menunggu persetujuan admin.');
@@ -148,6 +174,10 @@ router.post('/', async (req, res) => {
         }
         const claim = claimState.get(from);
         const orderSel = orderState.get(from);
+        if(id.startsWith('var:')){
+          await onVariantSelected(from, id.slice(4));
+          continue;
+        }
         if(orderSel?.step === 'TNC_ACK' && id.startsWith('b')){
           if(id === 'b1'){
             await prisma.orders.update({ where:{ id: orderSel.order.id }, data:{ tnc_ack_at: new Date() } });
@@ -187,18 +217,21 @@ router.post('/', async (req, res) => {
               await withHelpButtons(from, 'Dibatalkan.');
               claimState.delete(from);
             }
-          } else if (orderSel && title === 'beli 1') {
+          } else if (orderSel?.step === 'VARIANT_SELECTED' && title === 'beli 1') {
             orderState.delete(from);
-            const product = await prisma.products.findUnique({ where: { code: orderSel.code } });
-            if (!product || !product.is_active) {
-            await withHelpButtons(from, 'Produk tidak tersedia.');
+            const { product, variant } = orderSel;
+            if (!product || !product.is_active || !variant || !variant.active) {
+              await withHelpButtons(from, 'Produk tidak tersedia.');
             } else {
-              const order = await createOrder({ buyer_phone: from, product_code: orderSel.code, qty: 1, amount_cents: product.price_cents });
+              const order = await createOrder({ buyer_phone: from, product_code: product.code, variant_code: variant.code, qty: 1, amount_cents: variant.price_cents });
               if (order.status === 'AWAITING_PREAPPROVAL') {
                 await withHelpButtons(from, 'Order diterima dan menunggu persetujuan admin.');
+              } else if(product.sk_text && !order.tnc_ack_at){
+                orderState.set(from, { step:'TNC_ACK', order, product });
+                await sendInteractiveButtons(from, product.sk_text, ['Setuju','Tolak']);
               } else {
                 const deadlineAt = new Date(order.created_at.getTime() + PAYMENT_DEADLINE_MIN * 60 * 1000);
-                const caption = `${PAYMENT_QRIS_TEXT}\nInvoice: ${order.invoice}\nTotal: Rp ${(product.price_cents)/100}\nDeadline: ${deadlineAt.toLocaleTimeString()}\nKirim foto bukti bayar ke sini.`;
+                const caption = `${PAYMENT_QRIS_TEXT}\nInvoice: ${order.invoice}\nTotal: ${formatRp(order.amount_cents)}\nDeadline: ${deadlineAt.toLocaleTimeString()}\nKirim foto bukti bayar ke sini.`;
                 if (PAYMENT_QRIS_MEDIA_ID){
                   await sendImageById(from, PAYMENT_QRIS_MEDIA_ID, caption);
                   await withHelpButtons(from, 'Jika sudah bayar kirim bukti.');
@@ -211,7 +244,7 @@ router.post('/', async (req, res) => {
                 }
               }
             }
-          } else if (orderSel && title === 'batal') {
+          } else if (orderSel?.step === 'VARIANT_SELECTED' && title === 'batal') {
             orderState.delete(from);
             await withHelpButtons(from, 'Dibatalkan.');
           } else if (title === 'order') await withHelpButtons(from, 'Format: order <kode> <qty> [email]');
