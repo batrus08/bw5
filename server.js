@@ -70,4 +70,7 @@ const server = app.listen(PORT, async () => {
   await startWorkers();
 });
 
-process.on('SIGTERM', () => { console.log('SIGTERM received, closing...'); server.close(() => process.exit(0)); });
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, closing gracefully');
+  server.close(() => process.exit(0));
+});

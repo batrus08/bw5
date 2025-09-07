@@ -9,7 +9,7 @@ async function post(topic, payload){
   if(!SHEET2_WEBAPP_URL){
     return { ok:false, skipped:true, reason:'missing SHEET2_WEBAPP_URL' };
   }
-  const body = JSON.stringify({ topic, ...payload });
+  const body = JSON.stringify(Object.assign({ topic }, payload));
   const headers = {
     'Content-Type': 'application/json',
     'X-Hub-Signature-256': signBody(body),

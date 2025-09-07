@@ -131,7 +131,12 @@ router.post('/', async (req, res) => {
         await withHelpButtons(from, 'Terima kasih! Bukti pembayaran diterima dan sedang diverifikasi admin.');
         const deliveryMode = order.delivery_mode || order.product.default_mode || null;
         const otpPolicy = order.variant?.otp_policy || order.product.default_otp_policy || 'NONE';
-        await sendMessage(process.env.ADMIN_CHAT_ID, `🧾 Bukti bayar masuk\nInvoice: <b>${order.invoice}</b>\nProduk: ${order.product.name} (${order.product.code})\nQty: ${order.qty}\nTotal: Rp ${(order.amount_cents)/100}`, { parse_mode:'HTML', ...buildOrderKeyboard(order.invoice, deliveryMode, otpPolicy) });
+        const kb = buildOrderKeyboard(order.invoice, deliveryMode, otpPolicy);
+        await sendMessage(
+          process.env.ADMIN_CHAT_ID,
+          `🧾 Bukti bayar masuk\nInvoice: <b>${order.invoice}</b>\nProduk: ${order.product.name} (${order.product.code})\nQty: ${order.qty}\nTotal: Rp ${(order.amount_cents)/100}`,
+          { parse_mode: 'HTML', reply_markup: kb.reply_markup }
+        );
       } else if (m.type === 'interactive') {
         const id = m.interactive?.button_reply?.id || m.interactive?.list_reply?.id || '';
         const title = m.interactive?.button_reply?.title?.toLowerCase() || '';
