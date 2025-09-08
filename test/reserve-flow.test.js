@@ -27,7 +27,8 @@ require.cache[dbPath] = { exports: {
     accounts: {
       update: async ({ where, data }) => {
         const acc = store.accounts.find(a=>a.id===where.id);
-        if(!acc) throw new Error('Stok habis');
+        await new Promise(r=>setTimeout(r,10));
+        if(!acc || acc.status !== 'AVAILABLE') throw new Error('Stok habis');
         Object.assign(acc,data); return acc;
       },
     },
@@ -36,6 +37,7 @@ require.cache[dbPath] = { exports: {
       update: async ({ where, data }) => { const o=store.orders.find(x=>x.id===where.id); Object.assign(o,data); return o; },
     },
     $queryRaw: async (strings, variantId, _v2, prodCode) => {
+      await new Promise(r=>setTimeout(r,10));
       return store.accounts.filter(a=>
         (a.variant_id===variantId || (!variantId && a.product_code===prodCode)) &&
         a.status==='AVAILABLE' && a.used_count<a.max_usage);
@@ -48,6 +50,9 @@ require.cache[dbPath] = { exports: {
       Object.assign(o, data); return o;
     },
   },
+  accounts: {
+    findUnique: async ({ where }) => store.accounts.find(a=>a.id===where.id),
+  },
   tasks: { create: async ()=>{} },
 } };
 
@@ -58,11 +63,13 @@ require.cache[variantPath] = { exports:{ resolveVariantByCode: async () => ({ va
 const { confirmPaid } = require('../src/services/orders');
 
 test('only one confirmation succeeds reserving stock', async () => {
-  const a = await confirmPaid('A');
-  const b = await confirmPaid('B');
-  const failures = [a,b].filter(x=>!x.ok);
+  const [a,b] = await Promise.allSettled([confirmPaid('A'), confirmPaid('B')]);
+  const results = [a,b].filter(r=>r.status==='fulfilled').map(r=>r.value);
+  const failures = results.filter(r=>!r.ok);
   assert.strictEqual(failures.length,1);
-  assert.ok(store.messages[0].text.includes('Stok'));
+  assert.ok(store.messages.some(m=>m.text.includes('Stok')));
+  const credMsgs = store.messages.filter(m=>m.text.includes('Username:'));
+  assert.strictEqual(credMsgs.length,1);
   const deliveryEvents = store.events.filter(e=>e[1]==='DELIVERY_READY');
   assert.strictEqual(deliveryEvents.length,1);
 });
