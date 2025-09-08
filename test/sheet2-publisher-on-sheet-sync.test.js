@@ -25,8 +25,8 @@ require.cache[dbPath] = { exports:{
   }
 }};
 
-let publishStockSummaryCalled = 0;
-require.cache[stockPath] = { exports:{ publishStockSummary: async () => { publishStockSummaryCalled++; throw new Error('boom'); } } };
+const publishStockSummary = test.mock.fn(async () => { throw new Error('boom'); });
+require.cache[stockPath] = { exports:{ publishStockSummary } };
 
 delete require.cache[routePath];
 const router = require(routePath);
@@ -48,7 +48,8 @@ test('publishStockSummary called on upsert and delete without affecting response
     assert.strictEqual(res.status,200);
   }
   await send({ code:'C', username:'STK_u', password:'p' });
+  assert.strictEqual(publishStockSummary.mock.calls.length,1);
   await send({ code:'C', username:'STK_u', __op:'DELETE' });
-  assert.strictEqual(publishStockSummaryCalled,2);
+  assert.strictEqual(publishStockSummary.mock.calls.length,2);
   await new Promise(r=>server.close(r));
 });
