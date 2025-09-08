@@ -35,6 +35,8 @@ async function upsertAccountFromSheet(payload, db = prisma){
     max_usage: payload.max_usage ?? 1,
     fifo_order: nowBig,
     natural_key,
+    disabled: false,
+    deleted_at: null,
   };
   const createData = Object.assign({ status: payload.status || 'AVAILABLE' }, baseData);
   const updateData = {
@@ -44,6 +46,8 @@ async function upsertAccountFromSheet(payload, db = prisma){
     totp_secret: payload.totp_secret || null,
     profile_index: payload.profile_index || null,
     max_usage: payload.max_usage ?? undefined,
+    disabled: false,
+    deleted_at: null,
   };
   if (payload.reorder === true) updateData.fifo_order = nowBig;
   if (payload.status) {
@@ -53,18 +57,14 @@ async function upsertAccountFromSheet(payload, db = prisma){
   }
 
   if (isDeleted) {
-    if (!existing) {
-      await addEvent(null, 'SHEET_SYNC_OK', 'Stock delete skipped', { natural_key });
-      return { account: null, action: 'skipped' };
-    }
     const account = await db.accounts.upsert({
       where: { natural_key },
-      create: Object.assign({}, createData, { status: 'DISABLED' }),
-      update: { status: 'DISABLED' },
+      create: Object.assign({}, createData, { status: 'DISABLED', disabled:true, deleted_at:new Date() }),
+      update: { status: 'DISABLED', disabled:true, deleted_at:new Date() },
     });
     await addEvent(null, 'SHEET_SYNC_OK', 'Stock disabled', { variant_id: variant.variant_id, account_id: account.id });
     await publishStockSummary().catch(() => {});
-    return { account, action: 'deleted' };
+    return { account, action: existing ? 'deleted' : 'created' };
   }
 
   const account = await db.accounts.upsert({

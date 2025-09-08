@@ -96,7 +96,7 @@ async function reserveAccount(orderId, variant_id, tx){
     if(!order) throw new Error('ORDER_NOT_FOUND');
     const [account] = await trx.$queryRaw`SELECT id, username, password, profile_name, profile_index, profile_pin, used_count, max_usage FROM accounts
       WHERE (variant_id = ${variant_id} OR (${variant_id} IS NULL AND product_code = ${order.product_code}))
-        AND status='AVAILABLE' AND used_count < max_usage
+        AND status='AVAILABLE' AND disabled=false AND deleted_at IS NULL AND used_count < max_usage
       ORDER BY fifo_order ASC, id ASC
       FOR UPDATE SKIP LOCKED LIMIT 1`;
     if(!account) throw new Error('OUT_OF_STOCK');
