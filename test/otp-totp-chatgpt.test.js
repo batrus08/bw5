@@ -14,18 +14,26 @@ test('generateTOTP produces RFC6238 sample code', () => {
 });
 
 test('single-use TOTP only generated once per order', async () => {
-  const tokens = [];
-  require.cache[dbPath] = { exports:{
-    otptokens:{
-      findFirst: async ({ where }) => tokens.find(t => t.order_id === where.order_id && t.type === where.type) || null,
-      create: async ({ data }) => { tokens.push({ ...data, order_id: data.order_id, type: data.type }); return data; },
+  const tokens = new Map();
+  require.cache[dbPath] = {
+    exports: {
+      otptokens: {
+        findFirst: async ({ where: { order_id, type } }) => {
+          return [...tokens.values()].find(t => t.order_id === order_id && t.type === type) || null;
+        },
+        create: async ({ data }) => {
+          tokens.set(data.id, data);
+          return data;
+        }
+      }
     }
-  }};
+  };
   delete require.cache[otpPath];
   const { generateSingleUseTOTP } = require(otpPath);
   const secret = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
-  const first = await generateSingleUseTOTP(1, secret);
+  const first = await generateSingleUseTOTP(7, secret);
   assert.ok(first);
-  const second = await generateSingleUseTOTP(1, secret);
+  const second = await generateSingleUseTOTP(7, secret);
   assert.strictEqual(second, null);
+  assert.strictEqual(tokens.size, 1);
 });
