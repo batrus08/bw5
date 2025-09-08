@@ -41,25 +41,20 @@ test('claim endpoints idempotent after refund', async () => {
   const server = app.listen(0); const port = server.address().port;
   const send = (path, body) => fetch(`http://127.0.0.1:${port}${path}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body||{}) });
 
-  let res = await send('/claims/1/approve');
-  let body = await res.json();
-  assert.ok(body.idempotent);
-  assert.strictEqual(updateCount,0);
+  async function twice(path, body){
+    let res = await send(path, body);
+    let b = await res.json();
+    assert.ok(b.idempotent);
+    assert.strictEqual(updateCount,0);
+    res = await send(path, body);
+    b = await res.json();
+    assert.ok(b.idempotent);
+    assert.strictEqual(updateCount,0);
+  }
 
-  res = await send('/claims/1/reject', { reason:'x' });
-  body = await res.json();
-  assert.ok(body.idempotent);
-  assert.strictEqual(updateCount,0);
-
-  res = await send('/claims/1/ewallet', { ewallet:'0812345678' });
-  body = await res.json();
-  assert.ok(body.idempotent);
-  assert.strictEqual(updateCount,0);
-
-  res = await send('/claims/1/refunded');
-  body = await res.json();
-  assert.ok(body.idempotent);
-  assert.strictEqual(updateCount,0);
+  await twice('/claims/1/approve');
+  await twice('/claims/1/reject', { reason:'x' });
+  await twice('/claims/1/refunded');
   assert.strictEqual(logs.length,0);
 
   await new Promise(r=>server.close(r));

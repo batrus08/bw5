@@ -14,8 +14,10 @@ const order = {
 };
 
 const store = {
-  warranty: [{ id: 1, order_id: 1, status: 'PENDING', reason: null }],
+  warranty: [{ id: 1, order_id: 1, status: 'PENDING', reason: null, ewallet: null }],
 };
+
+let updateCount = 0;
 
 require.cache[dbPath] = { exports: {
   warrantyclaims: {
@@ -25,6 +27,7 @@ require.cache[dbPath] = { exports: {
       return { ...c, order };
     },
     update: async ({ where, data }) => {
+      updateCount++;
       const c = store.warranty.find((x) => x.id === where.id);
       Object.assign(c, data);
       return { ...c };
@@ -35,7 +38,7 @@ require.cache[dbPath] = { exports: {
 require.cache[n8nPath] = { exports: { emitToN8N: async () => {} } };
 require.cache[eventPath] = { exports: { addEvent: async () => {} } };
 
-const { approveClaim } = require('../src/services/claims');
+const { approveClaim, setEwallet } = require('../src/services/claims');
 const { calcLinearRefund } = require('../src/utils/refund');
 
 test('approveClaim calculates prorated refund', async () => {
@@ -43,5 +46,21 @@ test('approveClaim calculates prorated refund', async () => {
   const expected = calcLinearRefund({ priceCents: order.amount_cents, warrantyDays: 300, usedDays: 5 });
   assert.strictEqual(r.claim.refund_cents, expected);
   assert.strictEqual(r.claim.status, 'APPROVED');
+});
+
+test('setEwallet normalizes number and idempotent on repeat', async () => {
+  updateCount = 0;
+  store.warranty[0] = { id:1, order_id:1, status:'APPROVED', ewallet:null };
+
+  await assert.rejects(() => setEwallet(1, '123'), /INVALID_EWALLET/);
+
+  const r1 = await setEwallet(1, ' 08-123 456 789 0 ');
+  assert.strictEqual(r1.claim.ewallet, '081234567890');
+  assert.strictEqual(r1.claim.status, 'AWAITING_REFUND');
+  assert.strictEqual(updateCount,1);
+
+  const r2 = await setEwallet(1, '081234567890');
+  assert.ok(r2.idempotent);
+  assert.strictEqual(updateCount,1);
 });
 
