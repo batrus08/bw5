@@ -31,7 +31,8 @@ const { lowStockAlert } = require('../src/services/worker');
 
 test('lowStockAlert triggers when below threshold', async () => {
   try {
-    setTime('2025-09-05T08:59:30+07:00');
+    // 01:59 UTC -> 08:59 WIB
+    setTime('2025-09-05T01:59:30Z');
     await lowStockAlert();
     assert.strictEqual(events.length,1);
     assert.strictEqual(notes.length,1);

@@ -38,18 +38,21 @@ function reset(){ global.Date = RealDate; }
 
 test('lowStockAlert idempotent per WIB hour', async () => {
   try {
-    setTime('2025-09-05T08:00:10+07:00');
+    // 01:00 UTC -> 08:00 WIB
+    setTime('2025-09-05T01:00:10Z');
     await lowStockAlert();
     assert.strictEqual(events.length,1);
     assert.strictEqual(calls.length,1);
     assert.strictEqual(events[0].kind,'LOW_STOCK_ALERT');
     assert.strictEqual(events[0].idem,'lowstock:NET-1P1U-30:2025090508');
-    setTime('2025-09-05T08:59:20+07:00');
+    // 01:59 UTC -> same WIB hour
+    setTime('2025-09-05T01:59:20Z');
     await lowStockAlert();
     assert.strictEqual(events.length,1);
     assert.strictEqual(calls.length,2);
     assert.strictEqual(calls[0],calls[1]);
-    setTime('2025-09-05T09:00:05+07:00');
+    // 02:00 UTC -> next WIB hour
+    setTime('2025-09-05T02:00:05Z');
     await lowStockAlert();
     assert.strictEqual(events.length,2);
     assert.strictEqual(calls.length,3);
