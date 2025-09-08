@@ -89,12 +89,12 @@ async function rejectPreapproval(invoice, note){
   return { ok:true };
 }
 
-async function reserveAccount(orderId, variant_id){
-  const result = await prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT id FROM orders WHERE id=${orderId} FOR UPDATE`;
-    const order = await tx.orders.findUnique({ where:{ id: orderId } });
+async function reserveAccount(orderId, variant_id, tx){
+  const runner = async (trx) => {
+    await trx.$queryRaw`SELECT id FROM orders WHERE id=${orderId} FOR UPDATE`;
+    const order = await trx.orders.findUnique({ where:{ id: orderId } });
     if(!order) throw new Error('ORDER_NOT_FOUND');
-    const [account] = await tx.$queryRaw`SELECT id, used_count, max_usage FROM accounts
+    const [account] = await trx.$queryRaw`SELECT id, username, password, profile_name, profile_index, profile_pin, used_count, max_usage FROM accounts
       WHERE (variant_id = ${variant_id} OR (${variant_id} IS NULL AND product_code = ${order.product_code}))
         AND status='AVAILABLE' AND used_count < max_usage
       ORDER BY fifo_order ASC, id ASC
@@ -102,10 +102,14 @@ async function reserveAccount(orderId, variant_id){
     if(!account) throw new Error('OUT_OF_STOCK');
     const used = account.used_count + 1;
     const disable = used >= account.max_usage;
-    await tx.accounts.update({ where:{ id: account.id }, data:{ used_count: used, status: disable ? 'DISABLED' : 'RESERVED' } });
-    await tx.orders.update({ where:{ id: order.id }, data:{ account_id: account.id } });
-    return { accountId: account.id };
-  });
+    await trx.accounts.update({ where:{ id: account.id }, data:{ used_count: used, status: disable ? 'DISABLED' : 'RESERVED' } });
+    await trx.orders.update({ where:{ id: order.id }, data:{ account_id: account.id } });
+    return { accountId: account.id, account };
+  };
+  if(tx){
+    return runner(tx);
+  }
+  const result = await prisma.$transaction(runner);
   await publishStockSummary().catch(()=>{});
   return result;
 }
@@ -125,65 +129,66 @@ async function ackTerms(orderId){
   return upd;
 }
 
-async function confirmPaid(invoice){
-  const order = await prisma.orders.findUnique({ where:{ invoice }, include:{ product:true, variant:true, account:true } });
-  if(!order) return { ok:false, error:'ORDER_NOT_FOUND' };
-  if(order.status === 'DELIVERED' || order.fulfilled_at != null){
-    return { ok:true, order };
-  }
-  let upd = order;
-  if(order.status !== 'PAID' && order.status !== 'DELIVERED'){
-    upd = await prisma.orders.update({ where:{ invoice }, data:{ status:'PAID', pay_ack_at: new Date() } });
-    await addEvent(order.id, 'PAY_ACK', `Order ${invoice} confirmed paid`);
-    await publishOrders([{ invoice, status: 'PAID' }]).catch(()=>{});
-  }
-  const deliveryMode = order.delivery_mode || order.product.delivery_mode || null;
-  if(deliveryMode === 'INVITE_EMAIL'){
-    await addEvent(order.id,'INVITE_QUEUED','Invite requested');
-    if(!order.email_for_invite){
-      orderState.set(order.buyer_phone, { step:'INVITE_EMAIL', orderId: order.id });
-      await sendText(order.buyer_phone,'Silakan balas dengan email yang akan diundang.');
+async function deliverProduct(order){
+  const result = await prisma.$transaction(async (tx) => {
+    const fresh = await tx.orders.findUnique({ where:{ id: order.id }, include:{ product:true, variant:true } });
+    if(!fresh) throw new Error('ORDER_NOT_FOUND');
+    if(fresh.delivered_at || fresh.fulfilled_at){
+      return { idempotent:true };
     }
-    return { ok:true, order: upd };
-  }
-  if(deliveryMode === 'CANVA_INVITE'){
-    await addEvent(order.id,'INVITE_QUEUED','Invite requested');
-    await prisma.tasks.create({ data:{ order_id: order.id, kind:'INVITE_CANVA' } }).catch(()=>{});
-    return { ok:true, order: upd };
-  }
-  const idem = order.idempotency_key || `deliver:${invoice}`;
-  if(order.status === 'DELIVERED' || order.idempotency_key?.startsWith('deliver:')){
-    return { ok:true, order };
-  }
-  let accountId;
-  const variant = order.variant || (order.metadata?.code ? await resolveVariantByCode(order.metadata.code).catch(()=>null) : null);
-  try {
-    ({ accountId } = await reserveAccount(order.id, variant?.variant_id));
-    await addEvent(order.id,'DELIVERY_READY','Account reserved',{ account_id: accountId }, 'SYSTEM', 'system', 'reserve:'+order.id);
-  } catch (e) {
-    await prisma.orders.update({ where:{ id: order.id }, data:{ status:'REJECTED' } }).catch(()=>{});
-    await sendText(order.buyer_phone, 'Stok untuk durasi ini telah habis. Silakan pilih durasi lain.');
+    const variant = fresh.variant || (fresh.metadata?.code ? await resolveVariantByCode(fresh.metadata.code).catch(()=>null) : null);
+    let accountId, account;
+    try{
+      ({ accountId, account } = await reserveAccount(fresh.id, variant?.variant_id, tx));
+    }catch(e){
+      await tx.orders.update({ where:{ id:fresh.id }, data:{ status:'REJECTED' } });
+      return { outOfStock:true, buyer:fresh.buyer_phone, invoice:fresh.invoice };
+    }
+    const now = new Date();
+    const durationDays = variant?.duration_days ?? (fresh.product.duration_months ? fresh.product.duration_months*30 : null);
+    const expire = durationDays ? new Date(now.getTime()+durationDays*86400000) : null;
+    await tx.orders.update({ where:{ id:fresh.id }, data:{ delivered_at: now, fulfilled_at: now, expires_at: expire, status:'DELIVERED' } });
+    const otpPolicy = variant?.otp_policy || fresh.product.default_otp_policy || 'NONE';
+    return { ok:true, data:{ account, buyer:fresh.buyer_phone, expire, otpPolicy, invoice:fresh.invoice, orderId:fresh.id } };
+  });
+  if(result?.idempotent) return { ok:true, idempotent:true };
+  if(result?.outOfStock){
+    await sendText(result.buyer, 'Stok untuk durasi ini telah habis. Silakan pilih durasi lain.');
     await addEvent(order.id, 'DELIVERY_NO_STOCK', 'Reservation failed');
+    await publishOrders([{ invoice: result.invoice, status:'REJECTED' }]).catch(()=>{});
+    await publishStockSummary().catch(()=>{});
     return { ok:false, error:'OUT_OF_STOCK' };
   }
-  const now = new Date();
-  const durationDays = variant?.duration_days ?? (order.product.duration_months ? order.product.duration_months*30 : null);
-  const expire = durationDays ? new Date(now.getTime() + durationDays*86400000) : null;
-  await prisma.orders.update({ where:{ id: order.id }, data:{ fulfilled_at: now, expires_at: expire, status:'DELIVERED', idempotency_key: idem } });
-  await publishOrders([{ invoice, status: 'DELIVERED' }]).catch(()=>{});
-  const account = await prisma.accounts.findUnique({ where:{ id: accountId } });
+  const { account, buyer, expire, otpPolicy, invoice, orderId } = result.data;
+  await addEvent(orderId,'DELIVERY_READY','Account reserved',{ account_id: account.id },'SYSTEM','system','reserve:'+orderId);
+  await publishOrders([{ invoice, status:'DELIVERED' }]).catch(()=>{});
+  await publishStockSummary().catch(()=>{});
   const profile = account.profile_name || account.profile_index || '-';
   const pin = account.profile_pin || '-';
   const expStr = expire ? expire.toLocaleDateString('id-ID') : '-';
   const cred = `Username: ${account.username}\nPassword: ${account.password}\nProfile: ${profile}\nPIN: ${pin}\nExpired: ${expStr}`;
-  await sendText(order.buyer_phone, cred);
-  const otpPolicy = variant?.otp_policy || order.product.default_otp_policy || 'NONE';
+  await sendText(buyer, cred);
   if(otpPolicy !== 'NONE'){
-    await sendInteractiveButtons(order.buyer_phone,'Perlu OTP?', ['Akses OTP']);
-    orderState.set(order.buyer_phone,{ step:'OTP_WAIT', orderId: order.id, otpPolicy });
+    await sendInteractiveButtons(buyer,'Perlu OTP?', ['Akses OTP']);
+    orderState.set(buyer,{ step:'OTP_WAIT', orderId, otpPolicy });
   }
-  await addEvent(order.id,'CREDENTIALS_SENT','Credentials sent',{ account_id: accountId },'SYSTEM','system', idem);
-  return { ok:true, order: upd };
+  await addEvent(orderId, 'CREDENTIALS_SENT', 'Credentials sent', { account_id: account.id });
+  await addEvent(orderId, 'DELIVERED', 'Credentials sent', { account_id: account.id });
+  return { ok:true };
+}
+
+async function confirmPaid(orderId){
+  const key = typeof orderId === 'number' ? { id: orderId } : (String(Number(orderId)) === orderId ? { id: Number(orderId) } : { invoice: orderId });
+  const order = await prisma.orders.findUnique({ where: key, include:{ product:true, variant:true } });
+  if(!order) return { ok:false, error:'ORDER_NOT_FOUND' };
+  if(['PAID_CONFIRMED','DELIVERED'].includes(order.status)){
+    return { ok:true, idempotent:true };
+  }
+  await prisma.orders.update({ where:{ id: order.id }, data:{ status:'PAID_CONFIRMED', pay_ack_at: new Date() } });
+  await addEvent(order.id, 'PAY_CONFIRMED', `Order ${order.invoice} confirmed paid`);
+  await addEvent(order.id, 'PAY_ACK', `Order ${order.invoice} confirmed paid`);
+  await publishOrders([{ invoice: order.invoice, status:'PAID_CONFIRMED' }]).catch(()=>{});
+  return deliverProduct(order);
 }
 
 async function rejectOrder(invoice, reason='Rejected'){
