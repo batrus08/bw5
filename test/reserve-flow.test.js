@@ -63,15 +63,26 @@ require.cache[variantPath] = { exports:{ resolveVariantByCode: async () => ({ va
 const { confirmPaid } = require('../src/services/orders');
 
 test('only one confirmation succeeds reserving stock', async () => {
-  const [a,b] = await Promise.allSettled([confirmPaid('A'), confirmPaid('B')]);
-  const results = [a,b].filter(r=>r.status==='fulfilled').map(r=>r.value);
-  const failures = results.filter(r=>!r.ok);
-  assert.strictEqual(failures.length,1);
-  assert.ok(store.messages.some(m=>m.text.includes('Stok')));
-  const credMsgs = store.messages.filter(m=>m.text.includes('Username:'));
-  assert.strictEqual(credMsgs.length,1);
-  const deliveryEvents = store.events.filter(e=>e[1]==='DELIVERY_READY');
-  assert.strictEqual(deliveryEvents.length,1);
+  const [a, b] = await Promise.allSettled([confirmPaid('A'), confirmPaid('B')]);
+  const results = [a, b].filter((r) => r.status === 'fulfilled').map((r) => r.value);
+  const failures = results.filter((r) => !r.ok);
+  assert.strictEqual(failures.length, 1);
+  assert.ok(store.messages.some((m) => m.text.includes('Stok')));
+
+  // initial credential delivery only once
+  let credMsgs = store.messages.filter((m) => m.text.includes('Username:'));
+  assert.strictEqual(credMsgs.length, 1);
+  let deliveryEvents = store.events.filter((e) => e[1] === 'DELIVERY_READY');
+  assert.strictEqual(deliveryEvents.length, 1);
+
+  // retry both orders: one idempotent success, one fails again
+  await confirmPaid('A');
+  await confirmPaid('B').catch(() => {});
+
+  credMsgs = store.messages.filter((m) => m.text.includes('Username:'));
+  assert.strictEqual(credMsgs.length, 1);
+  deliveryEvents = store.events.filter((e) => e[1] === 'DELIVERY_READY');
+  assert.strictEqual(deliveryEvents.length, 1);
 });
 
 test('fallback by product_code and auto-disable when max usage reached', async () => {

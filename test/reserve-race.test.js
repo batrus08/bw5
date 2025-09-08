@@ -54,10 +54,17 @@ require.cache[eventPath] = { exports:{ addEvent: async () => {} } };
 const { reserveAccount } = require('../src/services/orders');
 
 test('parallel reserveAccount only uses one account', async () => {
-  const [a,b] = await Promise.allSettled([reserveAccount(1,'v1'), reserveAccount(2,'v1')]);
-  const success = [a,b].filter(x=>x.status==='fulfilled');
-  const failed = [a,b].filter(x=>x.status==='rejected');
-  assert.strictEqual(success.length,1);
-  assert.strictEqual(failed.length,1);
-  assert.strictEqual(store.accounts[0].used_count,1);
+  const [a, b] = await Promise.allSettled([reserveAccount(1, 'v1'), reserveAccount(2, 'v1')]);
+  const success = [a, b].filter((x) => x.status === 'fulfilled');
+  const failed = [a, b].filter((x) => x.status === 'rejected');
+  assert.strictEqual(success.length, 1);
+  assert.strictEqual(failed.length, 1);
+  assert.strictEqual(store.accounts[0].used_count, 1);
+
+  // add new stock then retry failing reservation
+  store.accounts.push({ id: 2, variant_id: 'v1', product_code: 'C', status: 'AVAILABLE', max_usage: 1, used_count: 0, fifo_order: 2n, natural_key: 'k2' });
+  const retry = await reserveAccount(2, 'v1');
+  assert.ok(retry.accountId);
+  const usedTwo = store.accounts.find(a => a.id === 2);
+  assert.strictEqual(usedTwo.used_count, 1);
 });
