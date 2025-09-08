@@ -75,6 +75,11 @@ test('inviteCanva retries and stores dead-letter on failure', async (t) => {
   const fetchSpy = test.mock.fn(async () => ({ ok: false, status: 500, json: async () => ({ message: 'err' }) }));
   global.fetch = fetchSpy;
 
+  const origSetTimeout = global.setTimeout;
+  const backoffSpy = test.mock.fn((fn, ms) => { backoffSpy.delays.push(ms); fn(); });
+  backoffSpy.delays = [];
+  global.setTimeout = backoffSpy;
+
   const deadlettersCreate = test.mock.fn(async () => {});
   const eventsCreate = test.mock.fn(async () => {});
 
@@ -88,6 +93,8 @@ test('inviteCanva retries and stores dead-letter on failure', async (t) => {
 
   await assert.rejects(inviteCanva('foo@bar'));
   assert.strictEqual(fetchSpy.mock.calls.length, 3);
+  assert.deepStrictEqual(backoffSpy.delays, [400, 800]);
+  assert.strictEqual(backoffSpy.mock.calls.length, 2);
   assert.strictEqual(deadlettersCreate.mock.calls.length, 1);
   assert.strictEqual(eventsCreate.mock.calls.length, 1);
   const dl = deadlettersCreate.mock.calls[0].arguments[0].data;
@@ -98,6 +105,7 @@ test('inviteCanva retries and stores dead-letter on failure', async (t) => {
 
   t.after(() => {
     global.fetch = origFetch;
+    global.setTimeout = origSetTimeout;
     delete require.cache[dbPath];
     delete require.cache[canvaPath];
   });
