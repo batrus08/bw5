@@ -30,7 +30,12 @@ test('manual OTP token only usable once', async () => {
   delete require.cache[otpPath];
   const { createManualToken, fulfillManualOtp } = require(otpPath);
 
-  const tokenId = await createManualToken(99, 1);
+  const tokenId = await createManualToken(99, 1); // TTL 1s
+
+  // Ensure TTL is applied roughly within 1 second
+  const ttlMs = tokens.get(tokenId).expires_at.getTime() - Date.now();
+  assert.ok(ttlMs > 0 && ttlMs <= 1000);
+
   const order = await fulfillManualOtp(tokenId, '123456');
 
   assert.strictEqual(order, 99);

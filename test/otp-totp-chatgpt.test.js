@@ -36,4 +36,13 @@ test('single-use TOTP only generated once per order', async () => {
   const second = await generateSingleUseTOTP(7, secret);
   assert.strictEqual(second, null);
   assert.strictEqual(tokens.size, 1);
+
+  // Generated token is immediately marked used once
+  const record = [...tokens.values()][0];
+  assert.strictEqual(record.used, true);
+  assert.strictEqual(record.used_count, 1);
+
+  // TTL is short (<= step size)
+  const ttlMs = record.expires_at.getTime() - Date.now();
+  assert.ok(ttlMs > 0 && ttlMs <= 30000);
 });
