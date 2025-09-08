@@ -45,10 +45,12 @@ test('claim endpoints idempotent after refund', async () => {
     let res = await send(path, body);
     let b = await res.json();
     assert.ok(b.idempotent);
+    assert.strictEqual(res.status,200);
     assert.strictEqual(updateCount,0);
     res = await send(path, body);
     b = await res.json();
     assert.ok(b.idempotent);
+    assert.strictEqual(res.status,200);
     assert.strictEqual(updateCount,0);
   }
 

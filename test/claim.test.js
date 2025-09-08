@@ -59,6 +59,8 @@ test('setEwallet normalizes number and idempotent on repeat', async () => {
   assert.strictEqual(r1.claim.status, 'AWAITING_REFUND');
   assert.strictEqual(updateCount,1);
 
+  assert.ok(!r1.idempotent);
+
   const r2 = await setEwallet(1, '081234567890');
   assert.ok(r2.idempotent);
   assert.strictEqual(updateCount,1);

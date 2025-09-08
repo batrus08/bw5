@@ -67,5 +67,6 @@ test('requestEwallet sends refund amount', async () => {
   assert.strictEqual(messages.length, 1);
   assert.strictEqual(messages[0].type, 'text');
   assert.ok(messages[0].args[1].includes('Rp50'));
+  assert.ok(messages[0].args[1].includes('Kirim nomor ShopeePay'));
 });
 
