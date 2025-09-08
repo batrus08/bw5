@@ -32,17 +32,19 @@ To sign:
 4. Tambahkan prefix `sha256=` dan kirim sebagai header `X-Hub-Signature-256`.
 
 ```javascript
-// Apps Script example
-const payload = JSON.stringify({ hello: 'world' });
-const raw = Utilities.computeHmacSha256Signature(payload, SECRET);
-const hex = raw.map(b => ('0' + (b & 0xff).toString(16)).slice(-2)).join('');
-const header = 'sha256=' + hex;
+// Apps Script helper
+function hubSignature(body, secret) {
+  const bytes = Utilities.computeHmacSha256Signature(body, secret);
+  const hex = bytes.map(b => ('0' + (b & 0xff).toString(16)).slice(-2)).join('');
+  return 'sha256=' + hex;
+}
 
+const payload = JSON.stringify({ hello: 'world' });
 UrlFetchApp.fetch(url, {
   method: 'post',
   contentType: 'application/json',
   payload,
-  headers: { 'X-Hub-Signature-256': header },
+  headers: { 'X-Hub-Signature-256': hubSignature(payload, SECRET) },
 });
 ```
 
@@ -67,13 +69,13 @@ Verifikasi berhasil jika hasil perhitungan sama persis dengan nilai di header.
 
 ## UAT Checklist
 
-| Produk | Mode | Alur Ringkas |
-|--------|------|--------------|
-| Netflix | USERPASS | pilih varian → setuju T&C (cek `tnc_ack_at`) → QRIS (gambar) → TG Sudah Bayar → kredensial terkirim → Sheet‑2 Orders update |
-| Disney | OTP manual | akses OTP → TG admin input 6 digit → OTP ke user → one‑time |
-| ChatGPT | TOTP | akses OTP → kode dihasilkan 1x → second attempt ditolak |
-| Canva | INVITE | minta email → task INVITE_CANVA → notifikasi sukses/gagal |
-| STK_* | SYNC | sinkron Sheet‑1 → Sheet‑2 Stock update |
+| Produk | Mode | Alur Ringkas | Titik Verifikasi |
+|--------|------|--------------|------------------|
+| Netflix | USERPASS | pilih varian → setuju T&C → QRIS (gambar) → TG Sudah Bayar → kredensial terkirim | cek `tnc_ack_at`, Sheet‑2 Orders update |
+| Disney | OTP manual | akses OTP → TG admin input 6 digit → OTP ke user | OTP one‑time |
+| ChatGPT | TOTP | akses OTP → kode dihasilkan 1x → second attempt ditolak | OTP one‑time |
+| Canva | INVITE | minta email → task INVITE_CANVA → notifikasi sukses/gagal | notifikasi sesuai |
+| STK_* | SYNC | sinkron Sheet‑1 → Sheet‑2 Stock update | Sheet‑2 Stock update |
 
 ## Run & Test
 
