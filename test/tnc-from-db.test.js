@@ -7,6 +7,7 @@ process.env.WA_APP_SECRET = '';
 const waPath = require.resolve('../src/services/wa');
 const ordersSvcPath = require.resolve('../src/services/orders');
 const dbPath = require.resolve('../src/db/client');
+const eventPath = require.resolve('../src/services/events');
 
 // Capture WA messages
 const messages = [];
@@ -15,12 +16,16 @@ require.cache[waPath] = { exports:{
   sendQrisPayment: async (...args)=>{ messages.push({ type:'qris', args }); },
 }};
 
+// Capture events
+const events = [];
+require.cache[eventPath] = { exports:{ addEvent: async (...args)=>{ events.push(args); } } };
+
 const order = { id:1, invoice:'INV-1', product_code:'P1', qty:1, amount_cents:1000, status:'PENDING_PAYMENT', tnc_ack_at:null };
 require.cache[ordersSvcPath] = { exports:{
   createOrder: async ()=>order,
   setPayAck: async ()=>{},
   requestHelp: async ()=>{},
-  ackTerms: async ()=>{ order.tnc_ack_at = new Date(); return order; },
+  ackTerms: async ()=>{ order.tnc_ack_at = new Date(); await require(eventPath).addEvent(order.id,'TNC_CONFIRMED','terms accepted'); return order; },
 }};
 require.cache[dbPath] = { exports:{
   product_variants:{ findUnique: async ()=>({
@@ -51,5 +56,6 @@ test('terms loaded from DB and ack time set', async () => {
   assert.strictEqual(messages[0].args[1], 'S\u0026K dari DB');
   await send({ entry:[{ changes:[{ value:{ messages:[{ from:'1', type:'interactive', interactive:{ button_reply:{ id:'b1', title:'Setuju' } } }] } }] }] });
   assert.ok(order.tnc_ack_at instanceof Date);
+  assert.ok(events.find(e=>e[1]==='TNC_CONFIRMED'));
   await new Promise(r=>server.close(r));
 });
