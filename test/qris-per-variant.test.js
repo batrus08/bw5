@@ -8,7 +8,7 @@ process.env.WA_API_BASE = 'https://wa.example';
 const waPath = require.resolve('../src/services/wa');
 const dbPath = require.resolve('../src/db/client');
 
-function setup({ variantKey, productKey }){
+const setup = ({ variantKey, productKey }) => {
   const calls = [];
   global.fetch = async (_url, opts) => {
     calls.push(JSON.parse(opts.body));
@@ -22,7 +22,7 @@ function setup({ variantKey, productKey }){
   delete require.cache[waPath];
   const { sendQrisPayment } = require(waPath);
   return { sendQrisPayment, calls };
-}
+};
 
 test('variant QRIS image is used when available', async () => {
   const { sendQrisPayment, calls } = setup({ variantKey: 'QV', productKey: 'QD' });
