@@ -37,6 +37,7 @@ test('lowStockAlert triggers when below threshold', async () => {
     assert.strictEqual(notes.length,1);
     assert.strictEqual(events[0].kind,'LOW_STOCK_ALERT');
     assert.strictEqual(events[0].idem,'lowstock:A:2025090508');
+    assert.match(notes[0], /A/);
   } finally {
     reset();
   }
