@@ -20,17 +20,17 @@ require.cache[waPath] = { exports:{
 const events = [];
 require.cache[eventPath] = { exports:{ addEvent: async (...args)=>{ events.push(args); } } };
 
-const order = { id:1, invoice:'INV-1', product_code:'P1', qty:1, amount_cents:1000, status:'PENDING_PAYMENT', tnc_ack_at:null };
+const order = { id:1, invoice:'INV-1', product_code:'P1', qty:1, amount_cents:0, status:'PENDING_PAYMENT', tnc_ack_at:null, expires_at:null };
 require.cache[ordersSvcPath] = { exports:{
-  createOrder: async ()=>order,
+  createOrder: async ({ amount_cents })=>{ order.amount_cents = amount_cents; order.variant_id = 'v1'; return order; },
   setPayAck: async ()=>{},
   requestHelp: async ()=>{},
-  ackTerms: async ()=>{ order.tnc_ack_at = new Date(); await require(eventPath).addEvent(order.id,'TNC_CONFIRMED','terms accepted'); return order; },
+  ackTerms: async ()=>{ order.tnc_ack_at = new Date(); order.expires_at = new Date(order.tnc_ack_at.getTime()+45*86400000); await require(eventPath).addEvent(order.id,'TNC_CONFIRMED','terms accepted'); return order; },
 }};
 require.cache[dbPath] = { exports:{
   product_variants:{ findUnique: async ()=>({
-    variant_id:'v1', code:'V1', title:'Var', price_cents:1000, active:true, tnc_key:'T1',
-    product:{ code:'P1', name:'Prod', price_cents:1000, is_active:true }
+    variant_id:'v1', code:'V1', title:'Var', price_cents:1500, duration_days:45, active:true, tnc_key:'T1',
+    product:{ code:'P1', name:'Prod', price_cents:9999, duration_months:60, is_active:true }
   }) },
   terms:{ findUnique: async ()=>({ key:'T1', body_md:'S&K dari DB' }) },
   orders:{
@@ -57,5 +57,8 @@ test('terms loaded from DB and ack time set', async () => {
   await send({ entry:[{ changes:[{ value:{ messages:[{ from:'1', type:'interactive', interactive:{ button_reply:{ id:'b1', title:'Setuju' } } }] } }] }] });
   assert.ok(order.tnc_ack_at instanceof Date);
   assert.ok(events.find(e=>e[1]==='TNC_CONFIRMED'));
+  assert.strictEqual(order.amount_cents, 1500);
+  const days = (order.expires_at - order.tnc_ack_at) / 86400000;
+  assert.strictEqual(Math.round(days), 45);
   await new Promise(r=>server.close(r));
 });
