@@ -6,7 +6,10 @@ const eventPath = require.resolve('../src/services/events');
 
 const store = {
   accounts: [{ id:1, variant_id:'v1', product_code:'C', status:'AVAILABLE', max_usage:1, used_count:0, fifo_order:1n, natural_key:'k1' }],
-  orders: [{ id:1, product_code:'C', metadata:{} }],
+  orders: [
+    { id:1, product_code:'C', metadata:{} },
+    { id:2, product_code:'C', metadata:{} },
+  ],
   locks: new Set(),
 };
 
@@ -21,7 +24,7 @@ require.cache[dbPath] = { exports: {
         update: async ({ where, data }) => {
           await new Promise(r=>setTimeout(r,10));
           const a = store.accounts.find(acc=>acc.id===where.id);
-          if(!a) throw new Error('Stok habis');
+          if(!a || a.status !== 'AVAILABLE') throw new Error('Stok habis');
           Object.assign(a, data); return a;
         },
       },
@@ -51,8 +54,10 @@ require.cache[eventPath] = { exports:{ addEvent: async () => {} } };
 const { reserveAccount } = require('../src/services/orders');
 
 test('parallel reserveAccount only uses one account', async () => {
-  const [a,b] = await Promise.allSettled([reserveAccount(1,'v1'), reserveAccount(1,'v1')]);
+  const [a,b] = await Promise.allSettled([reserveAccount(1,'v1'), reserveAccount(2,'v1')]);
   const success = [a,b].filter(x=>x.status==='fulfilled');
+  const failed = [a,b].filter(x=>x.status==='rejected');
   assert.strictEqual(success.length,1);
+  assert.strictEqual(failed.length,1);
   assert.strictEqual(store.accounts[0].used_count,1);
 });
