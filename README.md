@@ -53,6 +53,47 @@ Backend Express + Prisma untuk Telegram dan WhatsApp.
    curl "https://yourdomain.com/stock/options?productId=CHATGPT"
    ```
 
+## Deploy ke Alibaba Cloud ECS via SSH
+
+Langkah-langkah berikut memandu pemasangan backend ini di instansi
+ECS (Ubuntu/Debian) menggunakan koneksi SSH.
+
+1. **Masuk ke server.** Pastikan port 22, 80 dan 443 dibuka di security
+   group, kemudian sambung ke IP publik ECS:
+   ```bash
+   ssh root@<ECS_PUBLIC_IP>
+   ```
+2. **Pasang dependensi sistem.** Perbarui paket dan instal Git, Node.js
+   18+, dan klien PostgreSQL:
+   ```bash
+   apt update && apt install -y git curl build-essential
+   curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+   apt install -y nodejs postgresql
+   ```
+3. **Siapkan database PostgreSQL.** Anda bisa memakai ApsaraDB RDS atau
+   PostgreSQL lokal. Di konsol RDS buat database dan user, lalu catat
+   connection string berikut sebagai `DATABASE_URL`:
+   ```
+   postgresql://<USER>:<PASSWORD>@<RDS_ENDPOINT>:5432/<DB>?schema=public
+   ```
+4. **Clone dan konfigurasi aplikasi.**
+   ```bash
+   git clone <REPO_URL> bw5 && cd bw5
+   cp .env.example .env          # isi DATABASE_URL dan token lain
+   npm install
+   ```
+5. **Migrasi & seed database.**
+   ```bash
+   npx prisma migrate deploy
+   npm run seed
+   ```
+6. **Jalankan backend.**
+   ```bash
+   npm start
+   ```
+   Untuk menjalankan secara permanen gunakan PM2 dan atur Nginx sesuai
+   contoh pada bagian di bawah.
+
 ## Pengujian
 Jalankan seluruh tes unit:
 ```bash
