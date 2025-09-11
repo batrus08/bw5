@@ -99,8 +99,24 @@ Salin `.env.example` menjadi `.env` kemudian isi variabel berikut sesuai kebutuh
 Langkah-langkah berikut memandu pemasangan backend ini di instansi
 ECS (Ubuntu/Debian) menggunakan koneksi SSH.
 
-1. **Masuk ke server.** Pastikan port 22, 80 dan 443 dibuka di security
-   group, kemudian sambung ke IP publik ECS:
+### Persiapan Instansi
+1. **Buat ECS baru** melalui konsol Alibaba Cloud. Pilih Ubuntu 22.04 LTS dengan minimal 1 vCPU dan 1 GB RAM (gunakan spesifikasi lebih tinggi untuk produksi) serta disk ≥20 GB.
+2. **Tambahkan Security Group** yang akan mengatur lalu lintas masuk/keluar.
+
+### Atur Security Group
+Konfigurasi default keamanan perlu disesuaikan agar aplikasi dapat diakses dengan aman.
+
+**Inbound rules yang disarankan:**
+- `22/TCP` (**SSH**) → izinkan hanya dari IP administrator.
+- `80/TCP` (**HTTP**) → izinkan dari `0.0.0.0/0`.
+- `443/TCP` (**HTTPS**) → izinkan dari `0.0.0.0/0`.
+- `3000/TCP` → opsional; untuk akses langsung ke aplikasi sebelum Nginx, batasi ke IP Anda.
+- `5432/TCP` → opsional; buka hanya jika PostgreSQL diakses dari luar dan batasi ke IP tertentu/VPC.
+
+**Outbound rules** umumnya dapat dibiarkan **Allow All**.
+
+### Deploy Aplikasi
+1. **Masuk ke server** setelah aturan security group siap:
    ```bash
    ssh root@<ECS_PUBLIC_IP>
    ```
