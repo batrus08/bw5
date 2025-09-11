@@ -2,45 +2,86 @@
 
 Backend Express + Prisma untuk Telegram dan WhatsApp.
 
+## Daftar Isi
+- [Fitur Utama](#fitur-utama)
+- [Prasyarat](#prasyarat)
+- [Struktur Proyek](#struktur-proyek)
+- [Variabel Lingkungan](#variabel-lingkungan)
+- [Pengembangan Lokal](#pengembangan-lokal)
+- [Deploy ke Alibaba Cloud ECS via SSH](#deploy-ke-alibaba-cloud-ecs-via-ssh)
+- [Pengujian](#pengujian)
+- [Contoh Alur WhatsApp](#contoh-alur-whatsapp)
+- [n8n flows](#n8n-flows)
+- [Kontrol Kode push](#kontrol-kode-push)
+- [Telegram Webhook](#telegram-webhook)
+- [Webhook WhatsApp](#webhook-whatsapp)
+- [Nginx + SSL](#nginx--ssl)
+- [PM2](#pm2)
+- [Catatan](#catatan)
+- [Diagram Alur Pre-Approval](#diagram-alur-pre-approval)
+
+## Fitur Utama
+- RESTful API Node.js (Express) dengan Prisma & PostgreSQL
+- Integrasi bot Telegram dan WhatsApp
+- Sinkronisasi varian serta akun via Google Sheets
+- Alur otomatis melalui n8n
+- Dukungan pembayaran QRIS dan ShopeePay
+
 ## Prasyarat
 - Node.js ≥18
 - PostgreSQL
 - Domain dengan HTTPS (untuk webhook Telegram)
 
-## Setup
-1. Salin `.env.example` menjadi `.env` dan isi kredensial penting:
-   ```env
-   DATABASE_URL=postgresql://bw5user:password@localhost:5432/bw5db?schema=public
-   TELEGRAM_BOT_TOKEN=123456:ABCDEF
-   ADMIN_CHAT_ID=1696238182
-   ADMIN_API_TOKEN=supersecret
-   WEBHOOK_SECRET_PATH=secret123
-   PUBLIC_URL=https://yourdomain.com
-   WA_ACCESS_TOKEN=<WA_ACCESS_TOKEN>
-   WA_PHONE_NUMBER_ID=123456789
-   PAYMENT_QRIS_TEXT=Silakan bayar
-   N8N_BASE_URL=https://n8n.example/webhook/bw5
-   N8N_TOKEN=supersecret
-   SHEET_SYNC_SECRET=sharedsecret
+## Struktur Proyek
+```
+.
+├── src/            # kode sumber Express & worker
+├── prisma/         # schema Prisma & seed
+├── test/           # unit test
+├── server.js       # entry point produksi
+└── ecosystem.config.js # konfigurasi PM2
+```
+
+## Variabel Lingkungan
+Salin `.env.example` menjadi `.env` kemudian isi variabel berikut sesuai kebutuhan. Daftar lengkap tersedia di `.env.example`.
+
+| Nama | Fungsi |
+|------|--------|
+| `DATABASE_URL` | Koneksi PostgreSQL |
+| `TELEGRAM_BOT_TOKEN` | Token bot Telegram |
+| `ADMIN_CHAT_ID` | ID admin di Telegram |
+| `ADMIN_API_TOKEN` | Header `x-admin-token` untuk endpoint admin |
+| `WEBHOOK_SECRET_PATH` | Path rahasia webhook Telegram |
+| `PUBLIC_URL` | URL publik aplikasi |
+| `WA_ACCESS_TOKEN` | Token API WhatsApp |
+| `WA_PHONE_NUMBER_ID` | Nomor pengirim WhatsApp |
+| `PAYMENT_QRIS_TEXT` | Pesan QRIS yang ditampilkan |
+| `N8N_BASE_URL` | URL webhook n8n |
+| `N8N_TOKEN` | Token bearer untuk n8n |
+| `SHEET_SYNC_SECRET` | HMAC untuk sinkronisasi spreadsheet |
+
+## Pengembangan Lokal
+1. **Persiapan Lingkungan**
+   ```bash
+   cp .env.example .env   # isi kredensial penting
    ```
-   Variabel `ADMIN_API_TOKEN` dipakai sebagai header `x-admin-token` untuk mengakses endpoint stok. Variabel `WA_*` digunakan untuk pengiriman pesan WhatsApp, `SHEET_*` untuk sinkronisasi spreadsheet, sedangkan `N8N_*` adalah token internal untuk bridge n8n.
-2. Siapkan database PostgreSQL:
+2. **Siapkan database PostgreSQL**
    ```bash
    createuser -P bw5user
    createdb -O bw5user bw5db
    ```
-3. Inisialisasi schema dan data awal:
+3. **Install dependensi dan migrasi**
    ```bash
    npm install
    npx prisma migrate deploy
-   node src/preflight/guard.js      # tambah kolom bila belum ada
-   npm run seed                      # isi produk default
+   node src/preflight/guard.js   # tambah kolom bila belum ada
+   npm run seed                   # isi produk default
    ```
-4. Jalankan server:
+4. **Jalankan server pengembangan**
    ```bash
    npm start
    ```
-   Endpoint yang tersedia:
+5. **Endpoint yang tersedia**
    - `/healthz` → cek DB
    - `/status` → ringkasan produk/akun/order
    - `/stock/options?productId=PROD` → stok durasi per produk
@@ -230,6 +271,7 @@ curl -F "url=https://YOUR_DOMAIN/webhook/telegram/$WEBHOOK_SECRET_PATH" \
   https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook
 ```
 
+## Webhook WhatsApp
 Webhook WhatsApp memerlukan path `/webhook/wa`.
 
 ## Nginx + SSL
