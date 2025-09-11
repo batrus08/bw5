@@ -7,6 +7,7 @@ Backend Express + Prisma untuk Telegram dan WhatsApp.
 - [Prasyarat](#prasyarat)
 - [Struktur Proyek](#struktur-proyek)
 - [Variabel Lingkungan](#variabel-lingkungan)
+- [Memuat `.env` ke Shell](#memuat-env-ke-shell)
 - [Pengembangan Lokal](#pengembangan-lokal)
 - [Deploy ke Alibaba Cloud ECS via SSH](#deploy-ke-alibaba-cloud-ecs-via-ssh)
 - [Pengujian](#pengujian)
@@ -43,7 +44,7 @@ Backend Express + Prisma untuk Telegram dan WhatsApp.
 ```
 
 ## Variabel Lingkungan
-Salin `.env.example` menjadi `.env` kemudian isi variabel berikut sesuai kebutuhan. Daftar lengkap tersedia di `.env.example`.
+Salin `.env.example` menjadi `.env` kemudian isi variabel berikut sesuai kebutuhan. File `.env` tidak boleh dikomit dan harap jaga kerahasiaannya. Daftar lengkap variabel tersedia di `.env.example`.
 
 | Nama | Fungsi |
 |------|--------|
@@ -60,17 +61,29 @@ Salin `.env.example` menjadi `.env` kemudian isi variabel berikut sesuai kebutuh
 | `N8N_TOKEN` | Token bearer untuk n8n |
 | `SHEET_SYNC_SECRET` | HMAC untuk sinkronisasi spreadsheet |
 
+## Memuat `.env` ke Shell
+Untuk menjalankan skrip manual atau utilitas CLI yang memerlukan variabel lingkungan, muat seluruh isi `.env` ke sesi terminal Anda:
+
+```bash
+set -a
+source .env
+set +a
+```
+
+Perintah `set -a` menandai semua variabel agar diekspor. Setelah `source .env`, variabel tersedia untuk perintah berikutnya. `set +a` mengembalikan perilaku default. Alternatifnya, gunakan [direnv](https://direnv.net/) agar pemuatan variabel otomatis saat memasuki direktori proyek.
+
 ## Pengembangan Lokal
 1. **Persiapan Lingkungan**
    ```bash
    cp .env.example .env   # isi kredensial penting
    ```
+   Lihat [Memuat `.env` ke Shell](#memuat-env-ke-shell) bila ingin mengeksekusi perintah yang membutuhkan variabel lingkungan secara manual.
 2. **Siapkan database PostgreSQL**
    ```bash
    createuser -P bw5user
    createdb -O bw5user bw5db
    ```
-3. **Install dependensi dan migrasi**
+3. **Install dependensi dan migrasi** *(pastikan variabel dari `.env` sudah dimuat)*
    ```bash
    npm install
    npx prisma migrate deploy
