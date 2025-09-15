@@ -1,0 +1,15 @@
+version = 1
+
+[[analyzers]]
+name = "javascript"
+enabled = true
+
+  [analyzers.config]
+  runtime_version = "18"
+
+[[analyzers]]
+name = "test-coverage"
+enabled = true
+
+  [analyzers.config]
+  test_patterns = ["test/**"]
