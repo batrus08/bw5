@@ -18,7 +18,7 @@ function requestLogger() {
         status: res.statusCode,
         ms,
       };
-      console.log(JSON.stringify(log));
+      
     });
 
     next();

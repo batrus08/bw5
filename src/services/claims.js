@@ -17,7 +17,7 @@ async function approveClaim(id) {
   const claim = await prisma.warrantyclaims.findUnique({ where: { id }, include: { order: { include: { product: true } } } });
   if (!claim) throw new Error('CLAIM_NOT_FOUND');
   if (['REJECTED', 'REFUNDED'].includes(claim.status)) {
-    console.log({ idempotent_noop: true, action: 'claim.approve', id, status: claim.status });
+    
     return { ok: true, idempotent: true, message: 'claim already finalized', status: claim.status };
   }
   const order = claim.order;
@@ -33,7 +33,7 @@ async function rejectClaim(id, reason) {
   const claim = await prisma.warrantyclaims.findUnique({ where: { id } });
   if (!claim) throw new Error('CLAIM_NOT_FOUND');
   if (['REJECTED', 'REFUNDED'].includes(claim.status)) {
-    console.log({ idempotent_noop: true, action: 'claim.reject', id, status: claim.status });
+    
     return { ok: true, idempotent: true, message: 'claim already finalized', status: claim.status };
   }
   const upd = await prisma.warrantyclaims.update({ where: { id }, data: { status: 'REJECTED', reason } });
@@ -45,7 +45,7 @@ async function setEwallet(id, ewallet) {
   const claim = await prisma.warrantyclaims.findUnique({ where: { id } });
   if (!claim) throw new Error('CLAIM_NOT_FOUND');
   if (['REJECTED', 'REFUNDED'].includes(claim.status)) {
-    console.log({ idempotent_noop: true, action: 'claim.ewallet', id, status: claim.status });
+    
     return { ok: true, idempotent: true, message: 'claim already finalized', status: claim.status };
   }
   const { normalized, isValid } = normalizeEwallet(ewallet || '');
@@ -61,7 +61,7 @@ async function markRefunded(id) {
   const claim = await prisma.warrantyclaims.findUnique({ where: { id }, include: { order: true } });
   if (!claim) throw new Error('CLAIM_NOT_FOUND');
   if (['REJECTED', 'REFUNDED'].includes(claim.status)) {
-    console.log({ idempotent_noop: true, action: 'claim.refunded', id, status: claim.status });
+    
     return { ok: true, idempotent: true, message: 'claim already finalized', status: claim.status };
   }
   const upd = await prisma.warrantyclaims.update({ where: { id }, data: { status: 'REFUNDED' }, include: { order: true } });
