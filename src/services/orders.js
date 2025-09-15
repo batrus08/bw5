@@ -60,7 +60,7 @@ async function approvePreapproval(invoice){
   const order = await prisma.orders.findUnique({ where:{ invoice }, include:{ preapproval:true } });
   if(!order || !order.preapproval) return { ok:false, error:'ORDER_NOT_FOUND' };
   if(['APPROVED','REJECTED','EXPIRED'].includes(order.preapproval.status)){
-    console.log({ idempotent_noop:true, action:'preapproval.approve', invoice, status:order.preapproval.status });
+    
     return { ok:true, idempotent:true, message:'preapproval already finalized', status:order.preapproval.status };
   }
   await prisma.$transaction([
@@ -76,7 +76,7 @@ async function rejectPreapproval(invoice, note){
   const order = await prisma.orders.findUnique({ where:{ invoice }, include:{ preapproval:true } });
   if(!order || !order.preapproval) return { ok:false, error:'ORDER_NOT_FOUND' };
   if(['APPROVED','REJECTED','EXPIRED'].includes(order.preapproval.status)){
-    console.log({ idempotent_noop:true, action:'preapproval.reject', invoice, status:order.preapproval.status });
+    
     return { ok:true, idempotent:true, message:'preapproval already finalized', status:order.preapproval.status };
   }
   const reason = note ?? '';

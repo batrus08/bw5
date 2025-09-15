@@ -218,7 +218,7 @@ async function startWorkers(){
   setInterval(wrap(processTasks,'processTasks'), minutes(1));
   setInterval(wrap(publishOutput,'publishOutput'), minutes(60));
   if(SHEET_POLL_MS>0){ setInterval(wrap(syncAccountsFromCSV,'syncAccountsFromCSV'), SHEET_POLL_MS); }
-  console.log('Workers started.');
+  
 }
 
 async function otpExpirySweep(){

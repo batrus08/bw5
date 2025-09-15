@@ -85,16 +85,16 @@ app.use((err, _req, res, next) => {
 app.use((_req, res) => res.status(404).json({ ok: false, error: 'NOT_FOUND' }));
 
 const server = app.listen(PORT, async () => {
-  console.log(`Node ${process.version} listening on :${PORT}`);
+  
   if (process.env.PUBLIC_URL)
-    console.log(`Public URL: ${process.env.PUBLIC_URL}`);
-  console.log(`Telegram webhook mounted at: ${tgPath}`);
+    {};
+  
   await migrateIfEnabled();
   await runGuard();
   await startWorkers();
 });
 
 process.on('SIGTERM', () => {
-  console.log('SIGTERM received, closing gracefully');
+  
   server.close(() => process.exit(0));
 });
