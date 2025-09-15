@@ -12,7 +12,7 @@ const SHEET_SECRET = SHEET_SYNC_SECRET || 'secret';
 const router = express.Router();
 
 function buildNaturalKey({ code, username, profile_index }){
-  return crypto.createHash('sha1').update(`${code}|${username}|${profile_index||''}`).digest('hex');
+  return crypto.createHash("sha256").update(`${code}|${username}|${profile_index||''}`).digest('hex');
 }
 
 async function upsertAccountFromSheet(payload, db = prisma){
