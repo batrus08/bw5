@@ -35,7 +35,7 @@ async function onVariantSelected(from, variantId){
   const tncKey = variant.tnc_key || variant.product.default_tnc_key;
   if(tncKey){
     const terms = await prisma.terms.findUnique({ where:{ key: tncKey } }).catch(()=>null);
-    if(terms && terms.body_md){
+    if(terms?.body_md){
       const snippet = terms.body_md.slice(0,400);
       orderState.set(from, { step:'VARIANT_TNC', variant, product: variant.product });
       await sendInteractiveButtons(from, snippet, ['Setuju','Batal']);
@@ -163,7 +163,7 @@ router.post('/', async (req, res) => {
             const tncKey = product.default_tnc_key;
             if(tncKey){
               const terms = await prisma.terms.findUnique({ where:{ key: tncKey } }).catch(()=>null);
-              if(terms && terms.body_md){
+              if(terms?.body_md){
                 const snippet = terms.body_md.slice(0,400);
                 orderState.set(from, { step:'TNC_ACK', order, product });
                 await sendInteractiveButtons(from, snippet, ['Setuju','Batal']);
