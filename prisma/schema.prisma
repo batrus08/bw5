@@ -362,3 +362,9 @@ model qris_assets {
   image_url String
   active    Boolean @default(true)
 }
+
+model WhatsappState {
+  phone      String   @id
+  state_json Json
+  updated_at DateTime @updatedAt
+}
