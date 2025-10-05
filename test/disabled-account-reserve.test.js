@@ -1,107 +1,108 @@
-const assert = require('node:assert');
-const { test } = require('node:test');
+jest.mock('../src/db/client', () => ({
+  $transaction: jest.fn(),
+  $queryRaw: jest.fn(),
+}));
+jest.mock('../src/services/events', () => ({
+  addEvent: jest.fn(),
+}));
+jest.mock('../src/services/output', () => ({
+  publishStock: jest.fn(),
+}));
 
-// Test that reserveAccount skips disabled or deleted accounts
+const { reserveAccount } = require('../src/services/orders');
+const { publishStockSummary } = require('../src/services/stock');
+const prisma = require('../src/db/client');
+const { addEvent } = require('../src/services/events');
+const { publishStock } = require('../src/services/output');
 
-// Setup for reserveAccount
+describe('Account Reservation and Stock Summary with Disabled Accounts', () => {
 
-test('reserveAccount skips disabled/deleted accounts', async () => {
-  const dbPath = require.resolve('../src/db/client');
-  const eventPath = require.resolve('../src/services/events');
-  const stockPath = require.resolve('../src/services/stock');
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
 
-  const store = {
-    accounts: [
-      { id: 1, variant_id: 'v1', product_code: 'C', status: 'AVAILABLE', disabled: false, deleted_at: null, max_usage: 1, used_count: 0, fifo_order: 1n, username: 'u1', password: 'p1' },
-      { id: 2, variant_id: 'v1', product_code: 'C', status: 'AVAILABLE', disabled: true, deleted_at: null, max_usage: 1, used_count: 0, fifo_order: 2n, username: 'u2', password: 'p2' },
-    ],
-    orders: [{ id: 1, product_code: 'C', metadata: {} }],
-  };
+  describe('reserveAccount', () => {
+    it('should skip disabled or deleted accounts', async () => {
+      const store = {
+        accounts: [
+          { id: 1, variant_id: 'v1', product_code: 'C', status: 'AVAILABLE', disabled: false, deleted_at: null, max_usage: 1, used_count: 0, fifo_order: 1n, username: 'u1', password: 'p1' },
+          { id: 2, variant_id: 'v1', product_code: 'C', status: 'AVAILABLE', disabled: true, deleted_at: null, max_usage: 1, used_count: 0, fifo_order: 2n, username: 'u2', password: 'p2' },
+        ],
+        orders: [{ id: 1, product_code: 'C', metadata: {} }],
+      };
 
-  require.cache[dbPath] = {
-    exports: {
-      $transaction: async (fn) => fn({
-        $queryRaw: async (_q, variantId) => {
-          return store.accounts
-            .filter(a => ((a.variant_id === variantId) || (variantId == null && a.product_code === 'C'))
-              && a.status === 'AVAILABLE'
-              && !a.disabled
-              && a.deleted_at === null
-              && a.used_count < a.max_usage)
-            .sort((a, b) => (a.fifo_order - b.fifo_order) || (a.id - b.id))
-            .slice(0, 1);
-        },
-        accounts: {
-          update: async ({ where, data }) => {
-            const acc = store.accounts.find(a => a.id === where.id);
-            Object.assign(acc, data);
-            return acc;
+      addEvent.mockResolvedValue({});
+
+      prisma.$transaction.mockImplementation(async (fn) => {
+        const tx = {
+          $queryRaw: jest.fn().mockImplementation(async (_q, variantId) => {
+            return store.accounts
+              .filter(a => ((a.variant_id === variantId) || (variantId == null && a.product_code === 'C'))
+                && a.status === 'AVAILABLE'
+                && !a.disabled
+                && a.deleted_at === null
+                && a.used_count < a.max_usage)
+              .sort((a, b) => (a.fifo_order < b.fifo_order ? -1 : 1) || (a.id - b.id))
+              .slice(0, 1);
+          }),
+          accounts: {
+            update: jest.fn().mockImplementation(async ({ where, data }) => {
+              const acc = store.accounts.find(a => a.id === where.id);
+              Object.assign(acc, data);
+              return acc;
+            }),
           },
-        },
-        orders: {
-          findUnique: async ({ where }) => store.orders.find(o => o.id === where.id),
-          update: async ({ where, data }) => {
-            const o = store.orders.find(x => x.id === where.id);
-            Object.assign(o, data);
-            return o;
+          orders: {
+            findUnique: jest.fn().mockResolvedValue(store.orders[0]),
+            update: jest.fn().mockImplementation(async ({ where, data }) => {
+              const o = store.orders.find(x => x.id === where.id);
+              Object.assign(o, data);
+              return o;
+            }),
           },
-        },
-      }),
-    }
-  };
+        };
+        return fn(tx);
+      });
 
-  require.cache[eventPath] = { exports: { addEvent: async () => {} } };
-  require.cache[stockPath] = { exports: { publishStockSummary: async () => {} } };
+      await reserveAccount(1, 'v1');
 
-  delete require.cache[require.resolve('../src/services/orders')];
-  const { reserveAccount } = require('../src/services/orders');
+      expect(store.orders[0].account_id).toBe(1);
+      expect(store.accounts[0].status).toBe('DISABLED');
+      expect(store.accounts[0].used_count).toBe(1);
+      expect(store.accounts[1].used_count).toBe(0);
+      expect(store.accounts[1].status).toBe('AVAILABLE');
+    });
+  });
 
-  await reserveAccount(1, 'v1');
+  describe('publishStockSummary', () => {
+    it('should exclude disabled or deleted accounts from the summary', async () => {
+      const store = {
+        accounts: [
+          { id: 1, variant_id: 'v1', status: 'AVAILABLE', disabled: false, deleted_at: null, used_count: 0, max_usage: 1 },
+          { id: 2, variant_id: 'v1', status: 'AVAILABLE', disabled: true, deleted_at: null, used_count: 0, max_usage: 1 },
+          { id: 3, variant_id: 'v1', status: 'AVAILABLE', disabled: false, deleted_at: new Date(), used_count: 0, max_usage: 1 },
+        ],
+      };
 
-  assert.strictEqual(store.orders[0].account_id, 1);
-  assert.strictEqual(store.accounts[0].status, 'DISABLED');
-  assert.strictEqual(store.accounts[0].used_count, 1);
-  assert.strictEqual(store.accounts[1].used_count, 0);
-  assert.strictEqual(store.accounts[1].status, 'AVAILABLE');
-});
-
-// Test for publishStockSummary
-
-test('publishStockSummary excludes disabled/deleted accounts', async () => {
-  const dbPath = require.resolve('../src/db/client');
-  const outputPath = require.resolve('../src/services/output');
-
-  const store = {
-    accounts: [
-      { id: 1, variant_id: 'v1', status: 'AVAILABLE', disabled: false, deleted_at: null, used_count: 0, max_usage: 1 },
-      { id: 2, variant_id: 'v1', status: 'AVAILABLE', disabled: true, deleted_at: null, used_count: 0, max_usage: 1 },
-    ],
-    summary: null,
-  };
-
-  require.cache[dbPath] = {
-    exports: {
-      $queryRaw: async () => {
-        const accs = store.accounts.filter(a => a.status === 'AVAILABLE' && !a.disabled && a.deleted_at === null);
+      prisma.$queryRaw.mockImplementation(async () => {
+        const accs = store.accounts.filter(a => a.status === 'AVAILABLE' && !a.disabled && !a.deleted_at);
         const units = accs.filter(a => a.used_count < a.max_usage).length;
         const capacity = accs.reduce((s, a) => s + Math.max(0, a.max_usage - a.used_count), 0);
         return [{ code: 'v1', units, capacity }];
-      },
-    }
-  };
+      });
 
-  require.cache[outputPath] = { exports: { publishStock: async (rows) => { store.summary = rows; } } };
+      await publishStockSummary();
 
-  delete require.cache[require.resolve('../src/services/stock')];
-  const { publishStockSummary } = require('../src/services/stock');
+      expect(publishStock).toHaveBeenCalledTimes(1);
+      const publishedData = publishStock.mock.calls[0][0];
 
-  await publishStockSummary();
+      expect(Array.isArray(publishedData)).toBe(true);
+      expect(publishedData.length).toBe(1);
 
-  assert.ok(Array.isArray(store.summary));
-  assert.strictEqual(store.summary.length, 1);
-  const row = store.summary[0];
-  assert.strictEqual(row.code, 'v1');
-  assert.strictEqual(row.units, 1);
-  assert.strictEqual(row.capacity, 1);
+      const row = publishedData[0];
+      expect(row.code).toBe('v1');
+      expect(row.units).toBe(1);
+      expect(row.capacity).toBe(1);
+    });
+  });
 });
-

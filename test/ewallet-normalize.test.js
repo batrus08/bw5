@@ -1,25 +1,24 @@
-const assert = require('node:assert');
-const { test } = require('node:test');
-
 const { normalizeEwallet } = require('../src/utils/validation');
 
-test('normalize valid ewallet number', () => {
-  const r = normalizeEwallet(' 08-123 456 789 0 ');
-  assert.strictEqual(r.normalized, '081234567890');
-  assert.ok(r.isValid);
-});
+describe('normalizeEwallet', () => {
+  it('should normalize a valid e-wallet number', () => {
+    const { normalized, isValid } = normalizeEwallet(' 08-123 456 789 0 ');
+    expect(normalized).toBe('081234567890');
+    expect(isValid).toBe(true);
+  });
 
-test('reject too short', () => {
-  const r = normalizeEwallet('08123');
-  assert.ok(!r.isValid);
-});
+  it('should reject a number that is too short', () => {
+    const { isValid } = normalizeEwallet('08123');
+    expect(isValid).toBe(false);
+  });
 
-test('reject wrong prefix', () => {
-  const r = normalizeEwallet('0712345678');
-  assert.ok(!r.isValid);
-});
+  it('should reject a number with the wrong prefix', () => {
+    const { isValid } = normalizeEwallet('0712345678');
+    expect(isValid).toBe(false);
+  });
 
-test('reject too long', () => {
-  const r = normalizeEwallet('0812345678901234');
-  assert.ok(!r.isValid);
+  it('should reject a number that is too long', () => {
+    const { isValid } = normalizeEwallet('0812345678901234');
+    expect(isValid).toBe(false);
+  });
 });

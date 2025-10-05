@@ -1,63 +1,97 @@
-const assert = require('node:assert');
-const { test } = require('node:test');
+process.env.TELEGRAM_BOT_TOKEN = 't';
+process.env.ADMIN_CHAT_ID = '1';
+process.env.WEBHOOK_SECRET_PATH = 'w';
+process.env.DATABASE_URL = 'postgres://';
+process.env.ENCRYPTION_KEY = Buffer.alloc(32).toString('base64');
 
-process.env.TELEGRAM_BOT_TOKEN='t';
-process.env.ADMIN_CHAT_ID='1';
-process.env.WEBHOOK_SECRET_PATH='w';
-process.env.DATABASE_URL='postgres://';
-process.env.ENCRYPTION_KEY=Buffer.alloc(32).toString('base64');
+const { upsertAccountFromSheet } = require('../src/routes/sheet-sync');
+const prisma = require('../src/db/client');
+const { resolveVariantByCode } = require('../src/services/variants');
+const { addEvent } = require('../src/services/events');
 
-const routePath = require.resolve('../src/routes/sheet-sync');
-const dbPath = require.resolve('../src/db/client');
-const variantPath = require.resolve('../src/services/variants');
-const eventPath = require.resolve('../src/services/events');
+jest.mock('../src/services/variants', () => ({
+  resolveVariantByCode: jest.fn(),
+}));
 
-const store = { accounts: [] };
+jest.mock('../src/services/events', () => ({
+  addEvent: jest.fn(),
+}));
 
-require.cache[variantPath] = { exports:{ resolveVariantByCode: async (code) => ({ variant_id:'v1', product:'P' , code, duration_days:30, active:true }) } };
-require.cache[eventPath] = { exports:{ addEvent: async ()=>{} } };
-
-require.cache[dbPath] = { exports: { accounts:{
-  upsert: async ({ where, create, update }) => {
-    const idx = store.accounts.findIndex(a=>a.natural_key===where.natural_key);
-    if(idx===-1){ const acc = Object.assign({ id:store.accounts.length+1 }, create); store.accounts.push(acc); return acc; }
-    const acc = store.accounts[idx];
-    Object.assign(acc, update);
-    return acc;
+jest.mock('../src/db/client', () => ({
+  accounts: {
+    upsert: jest.fn(),
+    findUnique: jest.fn(),
   },
-  findUnique: async ({ where }) => store.accounts.find(a=>a.natural_key===where.natural_key) || null,
-} } };
+}));
 
-const { upsertAccountFromSheet } = require(routePath);
+describe('upsertAccountFromSheet', () => {
+  let store;
 
-const payload = { code:'C', username:'u', password:'p', max_usage:2, profile_index:1 };
+  beforeEach(() => {
+    store = { accounts: [] };
 
-test('upsertAccountFromSheet is idempotent', async () => {
-  await upsertAccountFromSheet(payload);
-  const first = store.accounts[0];
-  await upsertAccountFromSheet(payload);
-  assert.strictEqual(store.accounts.length,1);
-  assert.strictEqual(store.accounts[0].natural_key, first.natural_key);
-});
+    resolveVariantByCode.mockImplementation(async (code) => ({
+      variant_id: 'v1',
+      product: 'P',
+      code,
+      duration_days: 30,
+      active: true
+    }));
 
-test('deleted flag disables account', async () => {
-  await upsertAccountFromSheet(Object.assign({}, payload, { deleted:true, username:'u2', profile_index:2 }));
-  const acc = store.accounts.find(a=>a.profile_index===2);
-  assert.strictEqual(acc.status,'DISABLED');
-});
+    addEvent.mockResolvedValue({});
 
-test('no downgrade status on update', async () => {
-  await upsertAccountFromSheet(payload);
-  store.accounts[0].status = 'RESERVED';
-  await upsertAccountFromSheet(Object.assign({}, payload, { username:'u3' }));
-  assert.strictEqual(store.accounts[0].status, 'RESERVED');
-});
+    prisma.accounts.upsert.mockImplementation(async ({ where, create, update }) => {
+      const idx = store.accounts.findIndex(a => a.natural_key === where.natural_key);
+      if (idx === -1) {
+        const acc = { id: store.accounts.length + 1, ...create };
+        store.accounts.push(acc);
+        return acc;
+      }
+      const acc = store.accounts[idx];
+      Object.assign(acc, update);
+      return acc;
+    });
 
-test('fifo_order stable unless reorder true', async () => {
-  await upsertAccountFromSheet(payload);
-  const firstFifo = store.accounts[0].fifo_order;
-  await upsertAccountFromSheet(Object.assign({}, payload, { password:'p2' }));
-  assert.strictEqual(store.accounts[0].fifo_order, firstFifo);
-  await upsertAccountFromSheet(Object.assign({}, payload, { password:'p3', reorder:true }));
-  assert.notStrictEqual(store.accounts[0].fifo_order, firstFifo);
+    prisma.accounts.findUnique.mockImplementation(async ({ where }) => {
+      return store.accounts.find(a => a.natural_key === where.natural_key) || null;
+    });
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  const payload = { code: 'C', username: 'u', password: 'p', max_usage: 2, profile_index: 1 };
+
+  it('is idempotent', async () => {
+    await upsertAccountFromSheet(payload);
+    const first = { ...store.accounts[0] };
+    await upsertAccountFromSheet(payload);
+
+    expect(store.accounts.length).toBe(1);
+    expect(store.accounts[0].natural_key).toBe(first.natural_key);
+  });
+
+  it('deleted flag disables account', async () => {
+    await upsertAccountFromSheet({ ...payload, deleted: true, username: 'u2', profile_index: 2 });
+    const acc = store.accounts.find(a => a.profile_index === 2);
+    expect(acc.status).toBe('DISABLED');
+  });
+
+  it('does not downgrade status on update', async () => {
+    await upsertAccountFromSheet(payload);
+    store.accounts[0].status = 'RESERVED';
+    await upsertAccountFromSheet({ ...payload, username: 'u3' });
+    expect(store.accounts[0].status).toBe('RESERVED');
+  });
+
+  it('fifo_order is stable unless reorder is true', async () => {
+    await upsertAccountFromSheet(payload);
+    const firstFifo = store.accounts[0].fifo_order;
+    await upsertAccountFromSheet({ ...payload, password: 'p2' });
+    expect(store.accounts[0].fifo_order).toBe(firstFifo);
+
+    await upsertAccountFromSheet({ ...payload, password: 'p3', reorder: true });
+    expect(store.accounts[0].fifo_order).not.toBe(firstFifo);
+  });
 });

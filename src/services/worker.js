@@ -238,4 +238,4 @@ async function publishOutput(){
   await publishSnapshot(snapshot).catch(() => {});
 }
 
-module.exports = { startWorkers, stockTransitions, detectTransition, getExpiryReminderCandidates, lowStockAlert };
+module.exports = { startWorkers, stockTransitions, detectTransition, getExpiryReminderCandidates, lowStockAlert, processTasks };
