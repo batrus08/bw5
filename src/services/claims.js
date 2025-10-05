@@ -54,7 +54,7 @@ async function setEwallet(id, ewallet) {
     return { ok: true, idempotent: true, status: claim.status };
   }
   const upd = await prisma.warrantyclaims.update({ where: { id }, data: { ewallet: normalized, status: 'AWAITING_REFUND' } });
-  return { ok: true, claim: upd };
+  return { ok: true, claim: upd, idempotent: false };
 }
 
 async function markRefunded(id) {
