@@ -23,3 +23,9 @@ test('reject too long', () => {
   const r = normalizeEwallet('0812345678901234');
   assert.ok(!r.isValid);
 });
+
+test('normalize +62 prefix and special chars', () => {
+  const r = normalizeEwallet('+62 (812) 3456-7890');
+  assert.strictEqual(r.normalized, '081234567890');
+  assert.ok(r.isValid);
+});

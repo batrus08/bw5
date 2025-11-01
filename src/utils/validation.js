@@ -2,7 +2,11 @@ function normalizeEwallet(msisdn) {
   if (typeof msisdn !== 'string') {
     return { normalized: '', isValid: false, reason: 'not_string' };
   }
-  const cleaned = msisdn.trim().replace(/[\s-]+/g, '');
+  let cleaned = msisdn.trim();
+  if (cleaned.startsWith('+62')) {
+    cleaned = '0' + cleaned.substring(3);
+  }
+  cleaned = cleaned.replace(/\D/g, '');
   const isDigits = /^\d+$/.test(cleaned);
   const okPrefix = cleaned.startsWith('08');
   const okLength = cleaned.length >= 10 && cleaned.length <= 15;
