@@ -10,5 +10,5 @@ test('parseApprovalRequired only accepts exact "On"', () => {
   assert.strictEqual(parseApprovalRequired('on'), false);
   assert.strictEqual(parseApprovalRequired('Off'), false);
   assert.strictEqual(parseApprovalRequired(''), false);
-  assert.strictEqual(parseApprovalRequired(undefined), false);
+  assert.strictEqual(parseApprovalRequired(), false);
 });
