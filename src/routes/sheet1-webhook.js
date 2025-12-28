@@ -107,7 +107,7 @@ router.post('/sheet1-webhook', express.json({ type: 'application/json' }), async
         for (const r of records) {
           const payload = Object.assign({}, r, { code: r.variant_code || code });
           const result = await upsertAccountFromSheet(payload);
-          const action = result && result.action && summary[result.action] !== undefined ? result.action : 'skipped';
+          const action = result?.action && summary[result.action] !== undefined ? result.action : 'skipped';
           summary[action]++;
         }
       }
